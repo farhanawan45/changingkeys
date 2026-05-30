@@ -14,6 +14,9 @@ export async function POST(req: Request) {
       );
     }
 
+    const successUrl = `https://changingkeys.vercel.app/dashboard/quotes/${quoteId}?paid=true`;
+    const cancelUrl = `https://changingkeys.vercel.app/dashboard/quotes/${quoteId}?canceled=true`;
+
     console.log("🟢 Creating checkout session for:", {
       quoteId,
       customerEmail,
@@ -21,9 +24,11 @@ export async function POST(req: Request) {
       quotePrice,
     });
 
+    console.log("SUCCESS URL TEST:", successUrl);
+    console.log("CANCEL URL TEST:", cancelUrl);
+
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ["card"],
-
       customer_email: customerEmail,
 
       metadata: {
@@ -49,14 +54,14 @@ export async function POST(req: Request) {
       ],
 
       mode: "payment",
-
-      success_url: `https://changingkeys.vercel.app/dashboard/quotes/${quoteId}?paid=true`,
-      cancel_url: `https://changingkeys.vercel.app/dashboard/quotes/${quoteId}?canceled=true`,
+      success_url: successUrl,
+      cancel_url: cancelUrl,
     });
 
     console.log("✅ Checkout session created:", session.id);
     console.log("📧 Checkout customer_email:", session.customer_email);
     console.log("📦 Checkout metadata:", session.metadata);
+    console.log("🔗 Stripe checkout url:", session.url);
 
     return NextResponse.json({
       url: session.url,
