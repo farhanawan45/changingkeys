@@ -115,8 +115,7 @@ export async function POST(req: Request) {
 
     const { quoteId, customerEmail, customerName, quotePrice } = body;
 
-    const emailToSend =
-      process.env.RESEND_TEST_EMAIL || "farhanawancoder@gmail.com";
+    const emailToSend = customerEmail;
 
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ["card"],
