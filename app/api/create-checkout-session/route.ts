@@ -50,9 +50,8 @@ export async function POST(req: Request) {
 
       mode: "payment",
 
-      success_url: `http://localhost:3000/dashboard/quotes/${quoteId}?paid=true`,
-
-      cancel_url: `http://localhost:3000/dashboard/quotes/${quoteId}?canceled=true`,
+      success_url: `https://changingkeys.vercel.app/dashboard/quotes/${quoteId}?paid=true`,
+      cancel_url: `https://changingkeys.vercel.app/dashboard/quotes/${quoteId}?canceled=true`,
     });
 
     console.log("✅ Checkout session created:", session.id);
