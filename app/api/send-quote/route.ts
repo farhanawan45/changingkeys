@@ -115,38 +115,47 @@ export async function POST(req: Request) {
 
     const { quoteId, customerEmail, customerName, quotePrice } = body;
 
+    if (!quoteId || !customerEmail || !quotePrice) {
+      return NextResponse.json(
+        { error: "quoteId, customerEmail and quotePrice are required" },
+        { status: 400 }
+      );
+    }
+
     const emailToSend = customerEmail;
-
     const successUrl = `https://changingkeys-7mzr.vercel.app/dashboard/quotes/${quoteId}?paid=true`;
-   const cancelUrl = `https://changingkeys-7mzr.vercel.app/dashboard/quotes/${quoteId}?canceled=true`;
+    const cancelUrl = `https://changingkeys-7mzr.vercel.app/dashboard/quotes/${quoteId}?canceled=true`;
 
-   const session = await stripe.checkout.sessions.create({
-  payment_method_types: ["card"],
-  customer_email: emailToSend,
+    const session = await stripe.checkout.sessions.create({
+      payment_method_types: ["card"],
+      customer_email: emailToSend,
 
-  metadata: {
-    quoteId,
-    originalCustomerEmail: customerEmail,
-  },
-
-  line_items: [
-    {
-      price_data: {
-        currency: "gbp",
-        product_data: {
-          name: `Changing Keys Quote #${quoteId.slice(0, 8)}`,
-          description: `Removal service quotation for ${customerName}`,
-        },
-        unit_amount: Math.round(Number(quotePrice) * 100),
+      metadata: {
+        quoteId: String(quoteId),
+        originalCustomerEmail: String(customerEmail),
       },
-      quantity: 1,
-    },
-  ],
 
-  mode: "payment",
-  success_url: successUrl,
-  cancel_url: cancelUrl,
-  });
+      line_items: [
+        {
+          price_data: {
+            currency: "gbp",
+            product_data: {
+              name: `Changing Keys Quote #${String(quoteId).slice(0, 8)}`,
+              description: `Removal service quotation for ${
+                customerName || "customer"
+              }`,
+            },
+            unit_amount: Math.round(Number(quotePrice) * 100),
+          },
+          quantity: 1,
+        },
+      ],
+
+      mode: "payment",
+      success_url: successUrl,
+      cancel_url: cancelUrl,
+    });
+
     const paymentLink = session.url;
 
     const pdfBytes = await createQuotePdf({
