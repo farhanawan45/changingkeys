@@ -1,21 +1,21 @@
 import { NextResponse } from "next/server";
 import nodemailer from "nodemailer";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
+import Stripe from "stripe";
+import { createCalendarBooking } from "@/lib/google-calendar";
 import { stripe } from "@/lib/stripe";
 import { supabase } from "@/lib/supabase";
-import { createCalendarBooking } from "@/lib/google-calendar";
-import Stripe from "stripe";
 
 function buildBookingDateTime(movingDate: string) {
   const date = new Date(`${movingDate}T09:00:00`);
-
   const startDateTime = date.toISOString();
 
   date.setHours(date.getHours() + 2);
 
-  const endDateTime = date.toISOString();
-
-  return { startDateTime, endDateTime };
+  return {
+    startDateTime,
+    endDateTime: date.toISOString(),
+  };
 }
 
 const transporter = nodemailer.createTransport({
@@ -27,41 +27,39 @@ const transporter = nodemailer.createTransport({
 });
 
 async function sendBookingConfirmationEmail({
+  quoteId,
   customerName,
   customerEmail,
   quotePrice,
+  bookingStatus,
   movingDate,
   pickupAddress,
   dropoffAddress,
 }: {
+  quoteId: string;
   customerName: string;
   customerEmail?: string;
   quotePrice: string | number;
+  bookingStatus: string;
   movingDate?: string;
   pickupAddress?: string;
   dropoffAddress?: string;
 }) {
-  const emailToSend = customerEmail || process.env.SMTP_USER;
+  const emailToSend =
+    typeof customerEmail === "string" ? customerEmail.trim() : "";
 
   if (!emailToSend) {
-    console.log("❌ No customer email found");
+    console.log("BOOKING EMAIL ERROR:", "No customer email found");
     return;
   }
 
   try {
-    console.log("📧 Gmail SMTP sending booking email to:", emailToSend);
+    console.log("BOOKING EMAIL TO:", emailToSend);
 
     const pdfDoc = await PDFDocument.create();
-
     const page = pdfDoc.addPage([595, 842]);
-
-    const font = await pdfDoc.embedFont(
-      StandardFonts.Helvetica
-    );
-
-    const boldFont = await pdfDoc.embedFont(
-      StandardFonts.HelveticaBold
-    );
+    const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+    const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
 
     page.drawText("Changing Keys", {
       x: 50,
@@ -78,26 +76,40 @@ async function sendBookingConfirmationEmail({
       font: boldFont,
     });
 
-    page.drawText(`Customer: ${customerName}`, {
+    page.drawText(`Customer: ${customerName || "Customer"}`, {
       x: 50,
       y: 670,
       size: 12,
       font,
     });
 
-    page.drawText(`Email: ${customerEmail}`, {
+    page.drawText(`Email: ${emailToSend}`, {
       x: 50,
       y: 640,
       size: 12,
       font,
     });
 
-    page.drawText(`Amount Paid: £${quotePrice}`, {
+    page.drawText(`Quote ID: ${quoteId}`, {
       x: 50,
-      y: 590,
+      y: 610,
+      size: 12,
+      font,
+    });
+
+    page.drawText(`Amount Paid: GBP ${quotePrice}`, {
+      x: 50,
+      y: 560,
       size: 24,
       font: boldFont,
       color: rgb(0.02, 0.45, 0.28),
+    });
+
+    page.drawText(`Booking Status: ${bookingStatus}`, {
+      x: 50,
+      y: 525,
+      size: 12,
+      font,
     });
 
     const pdfBytes = await pdfDoc.save();
@@ -106,7 +118,6 @@ async function sendBookingConfirmationEmail({
       from: `"Changing Keys" <${process.env.SMTP_USER}>`,
       to: emailToSend,
       subject: "Booking Confirmed - Changing Keys",
-
       html: `
         <div style="font-family: Arial, sans-serif; background:#f8fafc; padding:40px 20px;">
           <div style="max-width:700px; margin:auto; background:white; border-radius:20px; overflow:hidden; border:1px solid #e2e8f0;">
@@ -126,7 +137,15 @@ async function sendBookingConfirmationEmail({
 
               <div style="margin-top:30px; padding:25px; background:#ecfdf5; border-radius:18px;">
                 <p style="margin:0 0 12px; color:#064e3b;">
-                  <strong>Amount Paid:</strong> £${quotePrice}
+                  <strong>Quote ID:</strong> ${quoteId}
+                </p>
+
+                <p style="margin:0 0 12px; color:#064e3b;">
+                  <strong>Amount Paid:</strong> GBP ${quotePrice}
+                </p>
+
+                <p style="margin:0 0 12px; color:#064e3b;">
+                  <strong>Booking Status:</strong> ${bookingStatus}
                 </p>
 
                 <p style="margin:0 0 12px; color:#064e3b;">
@@ -159,7 +178,6 @@ async function sendBookingConfirmationEmail({
           </div>
         </div>
       `,
-
       attachments: [
         {
           filename: "booking-confirmation.pdf",
@@ -169,20 +187,26 @@ async function sendBookingConfirmationEmail({
       ],
     });
 
-    console.log(
-      "✅ BOOKING CONFIRMATION EMAIL SENT:",
-      result.messageId
-    );
+    console.log("BOOKING EMAIL SENT:", result.messageId);
   } catch (emailError) {
-    console.log("❌ Gmail SMTP email failed:", emailError);
+    console.log("BOOKING EMAIL ERROR:", emailError);
   }
 }
 
+function getCheckoutCustomerEmail(session: Stripe.Checkout.Session) {
+  return (
+    session.customer_details?.email ||
+    session.customer_email ||
+    session.metadata?.customerEmail ||
+    session.metadata?.originalCustomerEmail ||
+    ""
+  );
+}
+
 export async function POST(req: Request) {
-  console.log("🔥 STRIPE WEBHOOK ROUTE HIT");
+  console.log("STRIPE WEBHOOK ROUTE HIT");
 
   const body = await req.text();
-
   const signature = req.headers.get("stripe-signature");
 
   if (!signature) {
@@ -209,19 +233,13 @@ export async function POST(req: Request) {
     );
   }
 
-  console.log("✅ Webhook received:", event.type);
+  console.log("Webhook received:", event.type);
 
   if (event.type === "checkout.session.completed") {
     const session = event.data.object as Stripe.Checkout.Session;
-
-    console.log("✅ checkout.session.completed triggered");
-
     const quoteId = session.metadata?.quoteId;
 
-    const customerEmail =
-      session.customer_details?.email ||
-      session.customer_email ||
-      session.metadata?.customerEmail;
+    console.log("checkout.session.completed triggered");
 
     if (!quoteId) {
       return NextResponse.json(
@@ -237,6 +255,8 @@ export async function POST(req: Request) {
       .single();
 
     if (quoteError || !quote) {
+      console.log("Quote not found for paid checkout:", quoteError);
+
       return NextResponse.json(
         { error: "Quote not found" },
         { status: 404 }
@@ -250,6 +270,8 @@ export async function POST(req: Request) {
       .single();
 
     if (leadError || !lead) {
+      console.log("Lead not found for paid checkout:", leadError);
+
       return NextResponse.json(
         { error: "Lead not found" },
         { status: 404 }
@@ -263,7 +285,7 @@ export async function POST(req: Request) {
 
     await supabase
       .from("leads")
-      .update({ status: "paid" })
+      .update({ status: "booked" })
       .eq("id", quote.lead_id);
 
     const { data: existingBooking } = await supabase
@@ -272,64 +294,65 @@ export async function POST(req: Request) {
       .eq("quote_id", quote.id)
       .maybeSingle();
 
+    const bookingStatus = "confirmed";
+
     if (!existingBooking) {
-      await supabase.from("bookings").insert([
+      const { error: bookingError } = await supabase.from("bookings").insert([
         {
           quote_id: quote.id,
           lead_id: quote.lead_id,
-          status: "confirmed",
+          status: bookingStatus,
         },
       ]);
+
+      if (bookingError) {
+        console.log("Booking create failed:", bookingError);
+      }
     }
 
+    const customerEmail =
+      getCheckoutCustomerEmail(session) ||
+      lead.customer_email ||
+      quote.customer_email ||
+      "";
+
     await sendBookingConfirmationEmail({
+      quoteId: quote.id,
       customerName:
-        lead.customer_name ||
-        session.metadata?.customerName ||
-        "Customer",
-
-      customerEmail:
-        customerEmail || lead.customer_email,
-
-      quotePrice: quote.price,
-
+        lead.customer_name || session.metadata?.customerName || "Customer",
+      customerEmail,
+      quotePrice:
+        typeof session.amount_total === "number"
+          ? (session.amount_total / 100).toFixed(2)
+          : quote.price,
+      bookingStatus,
       movingDate: lead.moving_date,
-
       pickupAddress: lead.pickup_address,
-
       dropoffAddress: lead.dropoff_address,
     });
 
     if (lead.moving_date) {
       try {
-        const { startDateTime, endDateTime } =
-          buildBookingDateTime(
-            lead.moving_date
-          );
+        const { startDateTime, endDateTime } = buildBookingDateTime(
+          lead.moving_date
+        );
 
         await createCalendarBooking({
-          summary: `Changing Keys Move - ${
-            lead.customer_name || "Customer"
-          }`,
-
+          summary: `Changing Keys Move - ${lead.customer_name || "Customer"}`,
           description: `
 Customer: ${lead.customer_name || "Not added"}
 Email: ${lead.customer_email || customerEmail || "Not added"}
 Phone: ${lead.customer_phone || "Not added"}
 Pickup: ${lead.pickup_address || "Not added"}
 Dropoff: ${lead.dropoff_address || "Not added"}
-Quote: £${quote.price}
+Quote: GBP ${quote.price}
 Quote ID: ${quote.id}
           `,
-
           startDateTime,
           endDateTime,
         });
       } catch (calendarError) {
-        console.log(
-          "Calendar booking failed:",
-          calendarError
-        );
+        console.log("Calendar booking failed:", calendarError);
       }
     }
   }

@@ -9,6 +9,8 @@ export default function DashboardPage() {
   const [pendingQuotes, setPendingQuotes] = useState(0);
   const [bookingsCount, setBookingsCount] = useState(0);
   const [recentLeads, setRecentLeads] = useState<any[]>([]);
+  const [unreadNotifications, setUnreadNotifications] = useState(0);
+  const [latestNotifications, setLatestNotifications] = useState<any[]>([]);
 
   useEffect(() => {
     async function fetchDashboardData() {
@@ -35,11 +37,24 @@ export default function DashboardPage() {
         .order("created_at", { ascending: false })
         .limit(5);
 
+      const { count: unreadCount } = await supabase
+        .from("notifications")
+        .select("*", { count: "exact", head: true })
+        .eq("is_read", false);
+
+      const { data: notifications } = await supabase
+        .from("notifications")
+        .select("*")
+        .order("created_at", { ascending: false })
+        .limit(5);
+
       setLeadsCount(leads || 0);
       setQuotesCount(quotes || 0);
       setPendingQuotes(pending || 0);
       setBookingsCount(bookings || 0);
       setRecentLeads(latestLeads || []);
+      setUnreadNotifications(unreadCount || 0);
+      setLatestNotifications(notifications || []);
     }
 
     fetchDashboardData();
@@ -55,13 +70,22 @@ export default function DashboardPage() {
   return (
     <div>
       <div className="rounded-3xl border bg-white p-8 shadow-sm">
-       <h1 className="text-3xl font-bold text-slate-900">
+       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+         <h1 className="text-3xl font-bold text-slate-900">
             Welcome back
           </h1>
 
-        <p className="mt-2 max-w-3xl text-slate-500">
-          Manage leads, quotations, customer payments, and confirmed removals from one central dashboard.
-        </p>
+          <p className="mt-2 max-w-3xl text-slate-500">
+            Manage leads, quotations, customer payments, and confirmed removals from one central dashboard.
+          </p>
+        </div>
+
+        <div className="rounded-2xl border bg-emerald-50 px-5 py-4 text-emerald-800">
+          <p className="text-sm font-semibold">Unread notifications</p>
+          <p className="mt-1 text-3xl font-bold">{unreadNotifications}</p>
+        </div>
+       </div>
       </div>
 
       <div className="mt-8 grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-4">
@@ -79,6 +103,58 @@ export default function DashboardPage() {
             <p className="mt-2 text-sm text-slate-500">{desc}</p>
           </div>
         ))}
+      </div>
+
+      <div className="mt-8 rounded-2xl border bg-white p-6 shadow-sm">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-xl font-bold text-slate-900">Notifications</h2>
+            <p className="mt-1 text-sm text-slate-500">
+              Latest lead alerts from automations and API submissions.
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-6 space-y-3">
+          {latestNotifications.length === 0 ? (
+            <div className="rounded-xl border border-dashed p-6 text-center">
+              <h3 className="font-bold text-slate-900">No notifications</h3>
+              <p className="mt-1 text-sm text-slate-500">
+                New lead notifications will appear here.
+              </p>
+            </div>
+          ) : (
+            latestNotifications.map((notification) => (
+              <a
+                key={notification.id}
+                href={
+                  notification.lead_id
+                    ? `/dashboard/leads/${notification.lead_id}`
+                    : "/dashboard/leads"
+                }
+                className="block rounded-xl border p-4 hover:bg-slate-50"
+              >
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <h3 className="font-bold text-slate-900">
+                      {notification.title}
+                    </h3>
+
+                    <p className="mt-1 text-slate-600">
+                      {notification.message}
+                    </p>
+                  </div>
+
+                  {!notification.is_read && (
+                    <span className="rounded-full bg-emerald-100 px-3 py-1 text-sm font-semibold text-emerald-700">
+                      New
+                    </span>
+                  )}
+                </div>
+              </a>
+            ))
+          )}
+        </div>
       </div>
 
       <div className="mt-8 rounded-2xl border bg-white p-6 shadow-sm">
@@ -125,7 +201,7 @@ export default function DashboardPage() {
                   className={`mt-3 inline-block rounded-full px-3 py-1 text-sm ${
                     lead.status === "quoted"
                       ? "bg-blue-100 text-blue-700"
-                      : lead.status === "paid"
+                      : lead.status === "paid" || lead.status === "booked"
                       ? "bg-emerald-100 text-emerald-700"
                       : "bg-yellow-100 text-yellow-700"
                   }`}

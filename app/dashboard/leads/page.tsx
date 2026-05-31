@@ -145,7 +145,7 @@ export default function LeadsPage() {
                     className={`mt-3 inline-block rounded-full px-3 py-1 text-sm ${
                       lead.status === "quoted"
                         ? "bg-blue-100 text-blue-700"
-                        : lead.status === "paid"
+                        : lead.status === "paid" || lead.status === "booked"
                         ? "bg-emerald-100 text-emerald-700"
                         : "bg-yellow-100 text-yellow-700"
                     }`}

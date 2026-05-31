@@ -114,17 +114,20 @@ export async function POST(req: Request) {
     const body = await req.json();
 
     const { quoteId, customerEmail, customerName, quotePrice } = body;
+    const emailToSend =
+      typeof customerEmail === "string" ? customerEmail.trim() : "";
 
-    if (!quoteId || !customerEmail || !quotePrice) {
+    if (!quoteId || !emailToSend || !quotePrice) {
       return NextResponse.json(
         { error: "quoteId, customerEmail and quotePrice are required" },
         { status: 400 }
       );
     }
 
-    const emailToSend = customerEmail;
     const successUrl = `https://changingkeys-7mzr.vercel.app/dashboard/quotes/${quoteId}?paid=true`;
     const cancelUrl = `https://changingkeys-7mzr.vercel.app/dashboard/quotes/${quoteId}?canceled=true`;
+
+    console.log("QUOTE EMAIL TO:", emailToSend);
 
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ["card"],
@@ -132,7 +135,9 @@ export async function POST(req: Request) {
 
       metadata: {
         quoteId: String(quoteId),
-        originalCustomerEmail: String(customerEmail),
+        customerEmail: emailToSend,
+        originalCustomerEmail: emailToSend,
+        customerName: String(customerName || ""),
       },
 
       line_items: [
@@ -161,7 +166,7 @@ export async function POST(req: Request) {
     const pdfBytes = await createQuotePdf({
       quoteId,
       customerName,
-      customerEmail,
+      customerEmail: emailToSend,
       quotePrice,
       paymentLink,
     });
@@ -225,7 +230,7 @@ export async function POST(req: Request) {
     });
 
     if (error) {
-      console.log("RESEND ERROR:", error);
+      console.log("QUOTE EMAIL ERROR:", error);
 
       return NextResponse.json(
         {
@@ -236,13 +241,14 @@ export async function POST(req: Request) {
       );
     }
 
-    console.log("RESEND SUCCESS:", data);
+    console.log("QUOTE EMAIL SENT:", data);
 
     return NextResponse.json({
       message: "Quote email sent successfully",
       data,
     });
   } catch (error) {
+    console.log("QUOTE EMAIL ERROR:", error);
     console.log("API ERROR:", error);
 
     return NextResponse.json(

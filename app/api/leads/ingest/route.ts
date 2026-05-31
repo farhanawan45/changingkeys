@@ -74,6 +74,21 @@ export async function POST(req: Request) {
       );
     }
 
+    const { error: notificationError } = await supabase
+      .from("notifications")
+      .insert([
+        {
+          title: "New lead received",
+          message: `New lead received: ${lead.customer_name || "Customer"}`,
+          type: "lead",
+          lead_id: lead.id,
+        },
+      ]);
+
+    if (notificationError) {
+      console.log("NOTIFICATION ERROR:", notificationError);
+    }
+
     const { data: settings, error: settingsError } = await supabase
       .from("settings")
       .select("*")

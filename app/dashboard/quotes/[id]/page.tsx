@@ -68,7 +68,7 @@ export default function QuoteDetailPage() {
 
           await supabase
             .from("leads")
-            .update({ status: "paid" })
+            .update({ status: "booked" })
             .eq("id", existingQuote.lead_id);
 
           const { data: existingBooking } = await supabase
@@ -157,7 +157,7 @@ export default function QuoteDetailPage() {
 
     await supabase
       .from("leads")
-      .update({ status: "paid" })
+      .update({ status: "booked" })
       .eq("id", quote.lead_id);
 
     const { error: bookingError } = await supabase.from("bookings").insert([
