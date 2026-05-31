@@ -117,10 +117,10 @@ export async function POST(req: Request) {
 
     const emailToSend = customerEmail;
 
-     const successUrl = `https://changingkeys.vercel.app/dashboard/quotes/${quoteId}?paid=true`;
-const cancelUrl = `https://changingkeys.vercel.app/dashboard/quotes/${quoteId}?canceled=true`;
+    const successUrl = `https://changingkeys-7mzr.vercel.app/dashboard/quotes/${quoteId}?paid=true`;
+   const cancelUrl = `https://changingkeys-7mzr.vercel.app/dashboard/quotes/${quoteId}?canceled=true`;
 
-const session = await stripe.checkout.sessions.create({
+   const session = await stripe.checkout.sessions.create({
   payment_method_types: ["card"],
   customer_email: emailToSend,
 
