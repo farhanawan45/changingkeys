@@ -117,16 +117,18 @@ export async function POST(req: Request) {
 
     const emailToSend = customerEmail;
 
-    const successUrl = `https://changingkeys.vercel.app/dashboard/quotes/${quoteId}?paid=true`;
+     const successUrl = `https://changingkeys.vercel.app/dashboard/quotes/${quoteId}?paid=true`;
 const cancelUrl = `https://changingkeys.vercel.app/dashboard/quotes/${quoteId}?canceled=true`;
 
 const session = await stripe.checkout.sessions.create({
   payment_method_types: ["card"],
   customer_email: emailToSend,
+
   metadata: {
     quoteId,
     originalCustomerEmail: customerEmail,
   },
+
   line_items: [
     {
       price_data: {
@@ -140,11 +142,11 @@ const session = await stripe.checkout.sessions.create({
       quantity: 1,
     },
   ],
+
   mode: "payment",
   success_url: successUrl,
   cancel_url: cancelUrl,
-});
-
+  });
     const paymentLink = session.url;
 
     const pdfBytes = await createQuotePdf({
