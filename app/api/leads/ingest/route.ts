@@ -78,9 +78,12 @@ export async function POST(req: Request) {
       .from("notifications")
       .insert([
         {
-          title: "New lead received",
-          message: `New lead received: ${lead.customer_name || "Customer"}`,
+          title: "New Lead Received",
+          message: `New lead received: ${
+            lead.customer_name || lead.customer_email || "Customer"
+          }`,
           type: "lead",
+          is_read: false,
           lead_id: lead.id,
         },
       ]);

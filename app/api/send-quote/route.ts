@@ -5,6 +5,18 @@ import { stripe } from "@/lib/stripe";
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
+function getErrorDetails(error: unknown) {
+  if (error instanceof Error) {
+    return {
+      name: error.name,
+      message: error.message,
+      stack: error.stack,
+    };
+  }
+
+  return error;
+}
+
 async function createQuotePdf({
   quoteId,
   customerName,
@@ -112,15 +124,43 @@ async function createQuotePdf({
 export async function POST(req: Request) {
   try {
     const body = await req.json();
+    console.log("SEND_QUOTE_REQUEST_BODY:", body);
 
     const { quoteId, customerEmail, customerName, quotePrice } = body;
     const emailToSend =
       typeof customerEmail === "string" ? customerEmail.trim() : "";
+    const quoteFromEmail = process.env.QUOTE_FROM_EMAIL;
 
-    if (!quoteId || !emailToSend || !quotePrice) {
+    if (!quoteId || !emailToSend || !customerName || !quotePrice) {
       return NextResponse.json(
-        { error: "quoteId, customerEmail and quotePrice are required" },
+        {
+          error:
+            "quoteId, customerEmail, customerName and quotePrice are required",
+          received: {
+            quoteId: Boolean(quoteId),
+            customerEmail: Boolean(emailToSend),
+            customerName: Boolean(customerName),
+            quotePrice: Boolean(quotePrice),
+          },
+        },
         { status: 400 }
+      );
+    }
+
+    if (!process.env.RESEND_API_KEY || !quoteFromEmail) {
+      const details = {
+        hasResendApiKey: Boolean(process.env.RESEND_API_KEY),
+        quoteFromEmail: quoteFromEmail || null,
+      };
+
+      console.log("QUOTE EMAIL ERROR:", details);
+
+      return NextResponse.json(
+        {
+          error: "Missing Resend email configuration",
+          details,
+        },
+        { status: 500 }
       );
     }
 
@@ -128,6 +168,7 @@ export async function POST(req: Request) {
     const cancelUrl = `https://changingkeys-7mzr.vercel.app/dashboard/quotes/${quoteId}?canceled=true`;
 
     console.log("QUOTE EMAIL TO:", emailToSend);
+    console.log("QUOTE EMAIL FROM:", quoteFromEmail);
 
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ["card"],
@@ -161,6 +202,12 @@ export async function POST(req: Request) {
       cancel_url: cancelUrl,
     });
 
+    console.log("STRIPE SESSION CREATED:", {
+      id: session.id,
+      url: session.url,
+      customerEmail: session.customer_email,
+    });
+
     const paymentLink = session.url;
 
     const pdfBytes = await createQuotePdf({
@@ -174,7 +221,7 @@ export async function POST(req: Request) {
     const pdfBase64 = Buffer.from(pdfBytes).toString("base64");
 
     const { data, error } = await resend.emails.send({
-      from: process.env.QUOTE_FROM_EMAIL!,
+      from: quoteFromEmail,
       to: emailToSend,
       subject: "Your Removal Quote - Changing Keys",
       html: `
@@ -236,6 +283,10 @@ export async function POST(req: Request) {
         {
           error: "Failed to send quote email",
           details: error,
+          resendNote:
+            quoteFromEmail === "onboarding@resend.dev"
+              ? "Resend onboarding@resend.dev can only send to verified account emails unless a sending domain is verified."
+              : undefined,
         },
         { status: 500 }
       );
@@ -248,13 +299,14 @@ export async function POST(req: Request) {
       data,
     });
   } catch (error) {
+    const details = getErrorDetails(error);
     console.log("QUOTE EMAIL ERROR:", error);
-    console.log("API ERROR:", error);
+    console.log("SEND_QUOTE_API_ERROR:", details);
 
     return NextResponse.json(
       {
         error: "Failed to send email",
-        details: error,
+        details,
       },
       { status: 500 }
     );

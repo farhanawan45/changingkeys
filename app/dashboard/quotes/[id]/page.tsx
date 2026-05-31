@@ -201,11 +201,20 @@ export default function QuoteDetailPage() {
         }),
       });
 
-      if (!response.ok) throw new Error("Failed");
+      const data = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        console.log("SEND_QUOTE_API_ERROR:", {
+          status: response.status,
+          data,
+        });
+
+        throw new Error(data?.error || "Failed to send quote email");
+      }
 
       toast.success("Quote email sent successfully");
     } catch (error) {
-      console.log(error);
+      console.log("SEND_QUOTE_FRONTEND_ERROR:", error);
       toast.error("Failed to send email");
     }
 

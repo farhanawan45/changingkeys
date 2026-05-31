@@ -37,24 +37,31 @@ export default function DashboardPage() {
         .order("created_at", { ascending: false })
         .limit(5);
 
-      const { count: unreadCount } = await supabase
+      const { count: unreadCount, error: unreadError } = await supabase
         .from("notifications")
         .select("*", { count: "exact", head: true })
         .eq("is_read", false);
 
-      const { data: notifications } = await supabase
+      const { data: notifications, error: notificationsError } = await supabase
         .from("notifications")
         .select("*")
         .order("created_at", { ascending: false })
         .limit(5);
+
+      if (unreadError || notificationsError) {
+        console.warn("Notifications table unavailable:", {
+          unreadError,
+          notificationsError,
+        });
+      }
 
       setLeadsCount(leads || 0);
       setQuotesCount(quotes || 0);
       setPendingQuotes(pending || 0);
       setBookingsCount(bookings || 0);
       setRecentLeads(latestLeads || []);
-      setUnreadNotifications(unreadCount || 0);
-      setLatestNotifications(notifications || []);
+      setUnreadNotifications(unreadError ? 0 : unreadCount || 0);
+      setLatestNotifications(notificationsError ? [] : notifications || []);
     }
 
     fetchDashboardData();
