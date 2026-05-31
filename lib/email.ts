@@ -18,7 +18,7 @@ export function getSmtpConfig() {
   const secure = (process.env.SMTP_SECURE || "true") === "true";
   const user = process.env.SMTP_USER;
   const pass = process.env.SMTP_PASS;
-  const from = process.env.QUOTE_FROM_EMAIL;
+  const from = process.env.QUOTE_FROM_EMAIL || "Changing Keys <bookings@changingkeys.co.uk>";
 
   return {
     host,
@@ -33,9 +33,9 @@ export function getSmtpConfig() {
 export function createSmtpTransporter() {
   const config = getSmtpConfig();
 
-  if (!config.user || !config.pass || !config.from) {
+  if (!config.user || !config.pass) {
     throw new Error(
-      "Missing SMTP email configuration. Required: SMTP_USER, SMTP_PASS and QUOTE_FROM_EMAIL."
+      "Missing SMTP email configuration. Required: SMTP_USER and SMTP_PASS."
     );
   }
 

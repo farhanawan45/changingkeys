@@ -61,33 +61,28 @@ export default function QuoteDetailPage() {
           .single();
 
         if (existingQuote && existingQuote.status !== "paid") {
-          await supabase
-            .from("quotes")
-            .update({ status: "paid" })
-            .eq("id", params.id);
+          const response = await fetch("/api/bookings/confirm", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              quoteId: params.id,
+              paymentMethod: "Card (Stripe)",
+            }),
+          });
 
-          await supabase
-            .from("leads")
-            .update({ status: "booked" })
-            .eq("id", existingQuote.lead_id);
+          const data = await response.json().catch(() => null);
 
-          const { data: existingBooking } = await supabase
-            .from("bookings")
-            .select("*")
-            .eq("quote_id", existingQuote.id)
-            .maybeSingle();
-
-          if (!existingBooking) {
-            await supabase.from("bookings").insert([
-              {
-                quote_id: existingQuote.id,
-                lead_id: existingQuote.lead_id,
-                status: "confirmed",
-              },
-            ]);
+          if (!response.ok) {
+            console.log("BOOKING CONFIRMATION ERROR:", data);
+            toast.error(
+              "Payment succeeded, but booking confirmation could not be finalised"
+            );
+          } else {
+            toast.success("Payment successful");
           }
 
-          toast.success("Payment successful");
           fetchQuote();
         }
       }
@@ -143,37 +138,30 @@ export default function QuoteDetailPage() {
 
     setIsMarkingPaid(true);
 
-    const { error } = await supabase
-      .from("quotes")
-      .update({ status: "paid" })
-      .eq("id", params.id);
+    try {
+      const response = await fetch("/api/bookings/confirm", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          quoteId: quote.id,
+          paymentMethod: "Manual bank transfer",
+        }),
+      });
 
-    if (error) {
+      const data = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        console.log("BOOKING CONFIRMATION ERROR:", data);
+        toast.error("Error marking quote as paid");
+      } else {
+        toast.success("Quote marked as paid and booking created");
+        fetchQuote();
+      }
+    } catch (error) {
+      console.log("BOOKING CONFIRMATION NETWORK ERROR:", error);
       toast.error("Error marking quote as paid");
-      console.log(error);
-      setIsMarkingPaid(false);
-      return;
-    }
-
-    await supabase
-      .from("leads")
-      .update({ status: "booked" })
-      .eq("id", quote.lead_id);
-
-    const { error: bookingError } = await supabase.from("bookings").insert([
-      {
-        quote_id: quote.id,
-        lead_id: quote.lead_id,
-        status: "confirmed",
-      },
-    ]);
-
-    if (bookingError) {
-      toast.error("Quote paid, but booking not created");
-      console.log(bookingError);
-    } else {
-      toast.success("Quote marked as paid and booking created");
-      fetchQuote();
     }
 
     setIsMarkingPaid(false);
