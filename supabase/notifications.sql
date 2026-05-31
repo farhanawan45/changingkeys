@@ -5,7 +5,7 @@ create table if not exists public.notifications (
   type text default 'lead',
   is_read boolean default false,
   created_at timestamptz default now(),
-  lead_id uuid nullable
+  lead_id uuid
 );
 
 create index if not exists notifications_is_read_created_at_idx
