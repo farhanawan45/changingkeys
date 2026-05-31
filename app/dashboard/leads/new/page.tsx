@@ -26,21 +26,41 @@ export default function NewLeadPage() {
 
     setIsSaving(true);
 
-    const { error } = await supabase.from("leads").insert([
-      {
-        customer_name: customerName,
-        customer_email: customerEmail,
-        pickup_address: pickupAddress,
-        dropoff_address: dropoffAddress,
-        status: "new",
-      },
-    ]);
+    const { data: lead, error } = await supabase
+      .from("leads")
+      .insert([
+        {
+          customer_name: customerName,
+          customer_email: customerEmail,
+          pickup_address: pickupAddress,
+          dropoff_address: dropoffAddress,
+          status: "new",
+        },
+      ])
+      .select()
+      .single();
 
     if (error) {
       toast.error("Error creating lead");
       console.log(error);
       setIsSaving(false);
     } else {
+      const { error: notificationError } = await supabase
+        .from("notifications")
+        .insert([
+          {
+            title: "New Lead Received",
+            message: `New lead received: ${customerName || customerEmail}`,
+            type: "lead",
+            is_read: false,
+            lead_id: lead.id,
+          },
+        ]);
+
+      if (notificationError) {
+        console.warn("NOTIFICATION ERROR:", notificationError);
+      }
+
       toast.success("Lead created successfully");
       router.push("/dashboard/leads");
     }

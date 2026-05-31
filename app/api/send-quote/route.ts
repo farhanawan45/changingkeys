@@ -276,8 +276,11 @@ export async function POST(req: Request) {
       ],
     });
 
+    console.log("RESEND RESPONSE:", { data, error });
+
     if (error) {
       console.log("QUOTE EMAIL ERROR:", error);
+      console.log("RESEND ERROR DETAILS:", error);
 
       return NextResponse.json(
         {

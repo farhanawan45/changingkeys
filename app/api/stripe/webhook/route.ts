@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import nodemailer from "nodemailer";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
+import { Resend } from "resend";
 import Stripe from "stripe";
 import { createCalendarBooking } from "@/lib/google-calendar";
 import { stripe } from "@/lib/stripe";
@@ -18,13 +18,19 @@ function buildBookingDateTime(movingDate: string) {
   };
 }
 
-const transporter = nodemailer.createTransport({
-  service: "gmail",
-  auth: {
-    user: process.env.SMTP_USER,
-    pass: process.env.SMTP_PASS,
-  },
-});
+const resend = new Resend(process.env.RESEND_API_KEY);
+
+function getErrorDetails(error: unknown) {
+  if (error instanceof Error) {
+    return {
+      name: error.name,
+      message: error.message,
+      stack: error.stack,
+    };
+  }
+
+  return error;
+}
 
 async function sendBookingConfirmationEmail({
   quoteId,
@@ -47,14 +53,26 @@ async function sendBookingConfirmationEmail({
 }) {
   const emailToSend =
     typeof customerEmail === "string" ? customerEmail.trim() : "";
+  const quoteFromEmail = process.env.QUOTE_FROM_EMAIL;
 
   if (!emailToSend) {
     console.log("BOOKING EMAIL ERROR:", "No customer email found");
     return;
   }
 
+  if (!process.env.RESEND_API_KEY || !quoteFromEmail) {
+    const details = {
+      hasResendApiKey: Boolean(process.env.RESEND_API_KEY),
+      quoteFromEmail: quoteFromEmail || null,
+    };
+
+    console.log("BOOKING EMAIL ERROR:", details);
+    return;
+  }
+
   try {
     console.log("BOOKING EMAIL TO:", emailToSend);
+    console.log("BOOKING EMAIL FROM:", quoteFromEmail);
 
     const pdfDoc = await PDFDocument.create();
     const page = pdfDoc.addPage([595, 842]);
@@ -114,8 +132,10 @@ async function sendBookingConfirmationEmail({
 
     const pdfBytes = await pdfDoc.save();
 
-    const result = await transporter.sendMail({
-      from: `"Changing Keys" <${process.env.SMTP_USER}>`,
+    const pdfBase64 = Buffer.from(pdfBytes).toString("base64");
+
+    const { data, error } = await resend.emails.send({
+      from: quoteFromEmail,
       to: emailToSend,
       subject: "Booking Confirmed - Changing Keys",
       html: `
@@ -181,15 +201,25 @@ async function sendBookingConfirmationEmail({
       attachments: [
         {
           filename: "booking-confirmation.pdf",
-          content: Buffer.from(pdfBytes),
-          contentType: "application/pdf",
+          content: pdfBase64,
         },
       ],
     });
 
-    console.log("BOOKING EMAIL SENT:", result.messageId);
+    console.log("RESEND RESPONSE:", { data, error });
+
+    if (error) {
+      console.log("BOOKING EMAIL ERROR:", error);
+      console.log("RESEND ERROR DETAILS:", error);
+      return;
+    }
+
+    console.log("BOOKING EMAIL SENT:", data);
   } catch (emailError) {
-    console.log("BOOKING EMAIL ERROR:", emailError);
+    const details = getErrorDetails(emailError);
+
+    console.log("BOOKING EMAIL ERROR:", details);
+    console.log("RESEND ERROR DETAILS:", details);
   }
 }
 
