@@ -6,6 +6,7 @@ import {
   getSmtpConfig,
 } from "@/lib/email";
 import { supabase } from "@/lib/supabase";
+import { createBookingReminders } from "@/lib/reminders";
 import twilio from "twilio";
 
 const BOOKING_CONFIRMATION_SENT_TITLE = (quoteId: string) =>
@@ -524,6 +525,21 @@ export async function finalizeBookingPayment({
     if (bookingError) {
       console.log("BOOKING CONFIRMATION ERROR: booking create failed", bookingError);
     }
+  }
+
+  const bookingToUse = existingBooking?.id || (await supabase
+    .from("bookings")
+    .select("id")
+    .eq("quote_id", quoteId)
+    .single()
+    .then((r) => r.data?.id));
+
+  if (bookingToUse) {
+    await createBookingReminders(
+      bookingToUse,
+      lead.id,
+      lead.moving_date
+    );
   }
 
   if (lead.moving_date) {

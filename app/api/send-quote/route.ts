@@ -6,6 +6,8 @@ import {
   getSmtpConfig,
 } from "@/lib/email";
 import { stripe } from "@/lib/stripe";
+import { createQuoteFollowupReminders } from "@/lib/reminders";
+import { supabase } from "@/lib/supabase";
 
 async function createQuotePdf({
   quoteId,
@@ -255,6 +257,16 @@ export async function POST(req: Request) {
       rejected: emailResult.rejected,
       response: emailResult.response,
     });
+
+    const { data: quote } = await supabase
+      .from("quotes")
+      .select("lead_id")
+      .eq("id", quoteId)
+      .single();
+
+    if (quote?.lead_id) {
+      await createQuoteFollowupReminders(quoteId, quote.lead_id);
+    }
 
     return NextResponse.json({
       message: "Quote email sent successfully",

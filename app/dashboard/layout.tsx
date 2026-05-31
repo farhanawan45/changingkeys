@@ -37,6 +37,7 @@ export default function DashboardLayout({
     ["Leads", "/dashboard/leads"],
     ["Quotes", "/dashboard/quotes"],
     ["Bookings", "/dashboard/bookings"],
+    ["Reminders", "/dashboard/reminders"],
     ["Calendar", "/dashboard/calendar"],
     ["Settings", "/dashboard/settings"],
   ];
