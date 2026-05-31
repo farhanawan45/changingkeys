@@ -14,8 +14,8 @@ export async function POST(req: Request) {
       );
     }
 
-    const successUrl = `https://changingkeys.vercel.app/dashboard/quotes/${quoteId}?paid=true`;
-    const cancelUrl = `https://changingkeys.vercel.app/dashboard/quotes/${quoteId}?canceled=true`;
+    const successUrl = `https://changingkeys-7mzr.vercel.app/dashboard/quotes/${quoteId}?paid=true`;
+    const cancelUrl = `https://changingkeys-7mzr.vercel.app/dashboard/quotes/${quoteId}?canceled=true`;
 
     console.log("🟢 Creating checkout session for:", {
       quoteId,

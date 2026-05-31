@@ -138,8 +138,8 @@ export async function POST(req: Request) {
         },
       ],
       mode: "payment",
-      success_url: `https://changingkeys.vercel.app/dashboard/quotes/${quoteId}?paid=true`,
-      cancel_url: `https://changingkeys.vercel.app/dashboard/quotes/${quoteId}?canceled=true`,
+       const successUrl = `https://changingkeys-7mzr.vercel.app/dashboard/quotes/${quoteId}?paid=true`;
+       const cancelUrl = `https://changingkeys-7mzr.vercel.app/dashboard/quotes/${quoteId}?canceled=true`;
     });
 
     const paymentLink = session.url;
