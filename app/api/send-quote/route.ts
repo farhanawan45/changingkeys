@@ -1,21 +1,11 @@
 import { NextResponse } from "next/server";
-import { Resend } from "resend";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
+import {
+  createSmtpTransporter,
+  getEmailErrorDetails,
+  getSmtpConfig,
+} from "@/lib/email";
 import { stripe } from "@/lib/stripe";
-
-const resend = new Resend(process.env.RESEND_API_KEY);
-
-function getErrorDetails(error: unknown) {
-  if (error instanceof Error) {
-    return {
-      name: error.name,
-      message: error.message,
-      stack: error.stack,
-    };
-  }
-
-  return error;
-}
 
 async function createQuotePdf({
   quoteId,
@@ -129,7 +119,6 @@ export async function POST(req: Request) {
     const { quoteId, customerEmail, customerName, quotePrice } = body;
     const emailToSend =
       typeof customerEmail === "string" ? customerEmail.trim() : "";
-    const quoteFromEmail = process.env.QUOTE_FROM_EMAIL;
 
     if (!quoteId || !emailToSend || !customerName || !quotePrice) {
       return NextResponse.json(
@@ -147,28 +136,10 @@ export async function POST(req: Request) {
       );
     }
 
-    if (!process.env.RESEND_API_KEY || !quoteFromEmail) {
-      const details = {
-        hasResendApiKey: Boolean(process.env.RESEND_API_KEY),
-        quoteFromEmail: quoteFromEmail || null,
-      };
-
-      console.log("QUOTE EMAIL ERROR:", details);
-
-      return NextResponse.json(
-        {
-          error: "Missing Resend email configuration",
-          details,
-        },
-        { status: 500 }
-      );
-    }
-
     const successUrl = `https://changingkeys-7mzr.vercel.app/dashboard/quotes/${quoteId}?paid=true`;
     const cancelUrl = `https://changingkeys-7mzr.vercel.app/dashboard/quotes/${quoteId}?canceled=true`;
 
     console.log("QUOTE EMAIL TO:", emailToSend);
-    console.log("QUOTE EMAIL FROM:", quoteFromEmail);
 
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ["card"],
@@ -218,10 +189,11 @@ export async function POST(req: Request) {
       paymentLink,
     });
 
-    const pdfBase64 = Buffer.from(pdfBytes).toString("base64");
+    const smtpConfig = getSmtpConfig();
+    const transporter = createSmtpTransporter();
 
-    const { data, error } = await resend.emails.send({
-      from: quoteFromEmail,
+    const emailResult = await transporter.sendMail({
+      from: smtpConfig.from,
       to: emailToSend,
       subject: "Your Removal Quote - Changing Keys",
       html: `
@@ -271,39 +243,30 @@ export async function POST(req: Request) {
       attachments: [
         {
           filename: `changing-keys-quote-${quoteId.slice(0, 8)}.pdf`,
-          content: pdfBase64,
+          content: Buffer.from(pdfBytes),
+          contentType: "application/pdf",
         },
       ],
     });
 
-    console.log("RESEND RESPONSE:", { data, error });
-
-    if (error) {
-      console.log("QUOTE EMAIL ERROR:", error);
-      console.log("RESEND ERROR DETAILS:", error);
-
-      return NextResponse.json(
-        {
-          error: "Failed to send quote email",
-          details: error,
-          resendNote:
-            quoteFromEmail === "onboarding@resend.dev"
-              ? "Resend onboarding@resend.dev can only send to verified account emails unless a sending domain is verified."
-              : undefined,
-        },
-        { status: 500 }
-      );
-    }
-
-    console.log("QUOTE EMAIL SENT:", data);
+    console.log("SMTP QUOTE EMAIL SENT:", {
+      messageId: emailResult.messageId,
+      accepted: emailResult.accepted,
+      rejected: emailResult.rejected,
+      response: emailResult.response,
+    });
 
     return NextResponse.json({
       message: "Quote email sent successfully",
-      data,
+      data: {
+        messageId: emailResult.messageId,
+        accepted: emailResult.accepted,
+        rejected: emailResult.rejected,
+      },
     });
   } catch (error) {
-    const details = getErrorDetails(error);
-    console.log("QUOTE EMAIL ERROR:", error);
+    const details = getEmailErrorDetails(error);
+    console.log("SMTP QUOTE EMAIL ERROR:", details);
     console.log("SEND_QUOTE_API_ERROR:", details);
 
     return NextResponse.json(

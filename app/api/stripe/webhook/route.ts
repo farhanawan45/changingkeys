@@ -1,8 +1,12 @@
 import { NextResponse } from "next/server";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
-import { Resend } from "resend";
 import Stripe from "stripe";
 import { createCalendarBooking } from "@/lib/google-calendar";
+import {
+  createSmtpTransporter,
+  getEmailErrorDetails,
+  getSmtpConfig,
+} from "@/lib/email";
 import { stripe } from "@/lib/stripe";
 import { supabase } from "@/lib/supabase";
 
@@ -16,20 +20,6 @@ function buildBookingDateTime(movingDate: string) {
     startDateTime,
     endDateTime: date.toISOString(),
   };
-}
-
-const resend = new Resend(process.env.RESEND_API_KEY);
-
-function getErrorDetails(error: unknown) {
-  if (error instanceof Error) {
-    return {
-      name: error.name,
-      message: error.message,
-      stack: error.stack,
-    };
-  }
-
-  return error;
 }
 
 async function sendBookingConfirmationEmail({
@@ -53,26 +43,14 @@ async function sendBookingConfirmationEmail({
 }) {
   const emailToSend =
     typeof customerEmail === "string" ? customerEmail.trim() : "";
-  const quoteFromEmail = process.env.QUOTE_FROM_EMAIL;
 
   if (!emailToSend) {
-    console.log("BOOKING EMAIL ERROR:", "No customer email found");
-    return;
-  }
-
-  if (!process.env.RESEND_API_KEY || !quoteFromEmail) {
-    const details = {
-      hasResendApiKey: Boolean(process.env.RESEND_API_KEY),
-      quoteFromEmail: quoteFromEmail || null,
-    };
-
-    console.log("BOOKING EMAIL ERROR:", details);
+    console.log("SMTP BOOKING EMAIL ERROR:", "No customer email found");
     return;
   }
 
   try {
     console.log("BOOKING EMAIL TO:", emailToSend);
-    console.log("BOOKING EMAIL FROM:", quoteFromEmail);
 
     const pdfDoc = await PDFDocument.create();
     const page = pdfDoc.addPage([595, 842]);
@@ -131,11 +109,11 @@ async function sendBookingConfirmationEmail({
     });
 
     const pdfBytes = await pdfDoc.save();
+    const smtpConfig = getSmtpConfig();
+    const transporter = createSmtpTransporter();
 
-    const pdfBase64 = Buffer.from(pdfBytes).toString("base64");
-
-    const { data, error } = await resend.emails.send({
-      from: quoteFromEmail,
+    const emailResult = await transporter.sendMail({
+      from: smtpConfig.from,
       to: emailToSend,
       subject: "Booking Confirmed - Changing Keys",
       html: `
@@ -201,25 +179,22 @@ async function sendBookingConfirmationEmail({
       attachments: [
         {
           filename: "booking-confirmation.pdf",
-          content: pdfBase64,
+          content: Buffer.from(pdfBytes),
+          contentType: "application/pdf",
         },
       ],
     });
 
-    console.log("RESEND RESPONSE:", { data, error });
-
-    if (error) {
-      console.log("BOOKING EMAIL ERROR:", error);
-      console.log("RESEND ERROR DETAILS:", error);
-      return;
-    }
-
-    console.log("BOOKING EMAIL SENT:", data);
+    console.log("SMTP BOOKING EMAIL SENT:", {
+      messageId: emailResult.messageId,
+      accepted: emailResult.accepted,
+      rejected: emailResult.rejected,
+      response: emailResult.response,
+    });
   } catch (emailError) {
-    const details = getErrorDetails(emailError);
+    const details = getEmailErrorDetails(emailError);
 
-    console.log("BOOKING EMAIL ERROR:", details);
-    console.log("RESEND ERROR DETAILS:", details);
+    console.log("SMTP BOOKING EMAIL ERROR:", details);
   }
 }
 

@@ -1,0 +1,51 @@
+import nodemailer from "nodemailer";
+
+export function getEmailErrorDetails(error: unknown) {
+  if (error instanceof Error) {
+    return {
+      name: error.name,
+      message: error.message,
+      stack: error.stack,
+    };
+  }
+
+  return error;
+}
+
+export function getSmtpConfig() {
+  const host = process.env.SMTP_HOST || "smtp.gmail.com";
+  const port = Number(process.env.SMTP_PORT || 465);
+  const secure = (process.env.SMTP_SECURE || "true") === "true";
+  const user = process.env.SMTP_USER;
+  const pass = process.env.SMTP_PASS;
+  const from = process.env.QUOTE_FROM_EMAIL;
+
+  return {
+    host,
+    port,
+    secure,
+    user,
+    pass,
+    from,
+  };
+}
+
+export function createSmtpTransporter() {
+  const config = getSmtpConfig();
+
+  if (!config.user || !config.pass || !config.from) {
+    throw new Error(
+      "Missing SMTP email configuration. Required: SMTP_USER, SMTP_PASS and QUOTE_FROM_EMAIL."
+    );
+  }
+
+  return nodemailer.createTransport({
+    host: config.host,
+    port: config.port,
+    secure: config.secure,
+    auth: {
+      user: config.user,
+      pass: config.pass,
+    },
+  });
+}
