@@ -51,7 +51,13 @@ export async function createQuoteFollowupReminders(
   quoteId: string,
   leadId?: string | null
 ): Promise<boolean> {
-  console.log("REMINDER CREATE START:", { quoteId, leadId, timestamp: new Date().toISOString() });
+  const fnStartTime = Date.now();
+  console.log("========== REMINDER CREATE START ==========");
+  console.log("REMINDER CREATE START:", {
+    quoteId,
+    leadId,
+    timestamp: new Date().toISOString(),
+  });
   
   try {
     const now = new Date();
@@ -64,8 +70,12 @@ export async function createQuoteFollowupReminders(
       paymentPendingTime: paymentPendingTime.toISOString(),
     });
 
+    console.log("CHECKING IF REMINDERS ALREADY EXIST...");
     const followupExists = await reminderExists(quoteId, null, "quote_followup");
+    console.log("Followup reminder exists check: ", followupExists);
+    
     const paymentExists = await reminderExists(quoteId, null, "payment_pending");
+    console.log("Payment reminder exists check: ", paymentExists);
 
     console.log("REMINDER EXISTENCE CHECK:", {
       quoteId,
@@ -76,57 +86,95 @@ export async function createQuoteFollowupReminders(
     const toInsert = [];
 
     if (!followupExists) {
-      toInsert.push({
+      const record = {
         lead_id: leadId || null,
         quote_id: quoteId,
         booking_id: null,
         type: "quote_followup",
         status: "pending",
         scheduled_for: followupTime.toISOString(),
-      });
+      };
+      toInsert.push(record);
+      console.log("Added quote_followup record to insert array:", record);
     }
 
     if (!paymentExists) {
-      toInsert.push({
+      const record = {
         lead_id: leadId || null,
         quote_id: quoteId,
         booking_id: null,
         type: "payment_pending",
         status: "pending",
         scheduled_for: paymentPendingTime.toISOString(),
-      });
+      };
+      toInsert.push(record);
+      console.log("Added payment_pending record to insert array:", record);
     }
 
-    console.log("REMINDER INSERT DATA:", {
-      quoteId,
-      leadId,
+    console.log("REMINDER DATA PREPARED:", {
+      table: "reminders",
+      schema: "public",
       recordCount: toInsert.length,
       records: JSON.stringify(toInsert, null, 2),
+      quoteId,
+      leadId,
     });
 
     if (toInsert.length > 0) {
-      console.log("EXECUTING SUPABASE INSERT...");
-      const { data, error } = await supabase.from("reminders").insert(toInsert);
+      console.log("========== EXECUTING SUPABASE INSERT ==========");
+      console.log("About to call: supabase.from('reminders').insert(toInsert)");
+      console.log("toInsert:", JSON.stringify(toInsert, null, 2));
+      
+      const { data, error, status } = await supabase
+        .from("reminders")
+        .insert(toInsert);
+
+      console.log("INSERT RETURNED:", {
+        status,
+        hasError: !!error,
+        hasData: !!data,
+        timestamp: new Date().toISOString(),
+      });
 
       if (error) {
+        console.log("========== REMINDER INSERT ERROR ==========");
         console.log("REMINDER INSERT ERROR:", {
           code: error?.code,
           message: error?.message,
           details: error?.details,
           hint: error?.hint,
+          statusCode: (error as any)?.statusCode,
+          status: (error as any)?.status,
+          fullError: JSON.stringify(error),
           quoteId,
           leadId,
           recordsAttempted: toInsert.length,
+          timestamp: new Date().toISOString(),
         });
         return false;
       }
 
+      console.log("========== REMINDER INSERT SUCCESS ==========");
       console.log("REMINDER INSERT SUCCESS:", {
         quoteId,
         leadId,
         recordsInserted: toInsert.length,
         data,
         timestamp: new Date().toISOString(),
+      });
+
+      // Verify insertion
+      console.log("VERIFYING INSERTED REMINDERS...");
+      const { data: verify, error: verifyError } = await supabase
+        .from("reminders")
+        .select("id, type, status, scheduled_for")
+        .eq("quote_id", quoteId);
+
+      console.log("VERIFICATION RESULT:", {
+        quoteId,
+        found: verify?.length || 0,
+        data: verify,
+        verifyError,
       });
     } else {
       console.log("REMINDER INSERT SKIPPED: All reminders already exist", {
@@ -136,14 +184,26 @@ export async function createQuoteFollowupReminders(
       });
     }
 
+    const elapsed = Date.now() - fnStartTime;
+    console.log("========== REMINDER CREATE COMPLETE ==========");
+    console.log("REMINDER CREATION COMPLETED:", {
+      quoteId,
+      success: true,
+      elapsedMs: elapsed,
+      timestamp: new Date().toISOString(),
+    });
+
     return true;
   } catch (error) {
+    const elapsed = Date.now() - fnStartTime;
+    console.log("========== REMINDER INSERT ERROR (EXCEPTION) ==========");
     console.log("REMINDER INSERT ERROR:", {
       exception: true,
       errorMessage: error instanceof Error ? error.message : String(error),
       errorStack: error instanceof Error ? error.stack : undefined,
       quoteId,
       leadId,
+      elapsedMs: elapsed,
       timestamp: new Date().toISOString(),
     });
     return false;
@@ -160,7 +220,14 @@ export async function createBookingReminders(
     return true;
   }
 
-  console.log("REMINDER CREATE START:", { bookingId, leadId, movingDate, timestamp: new Date().toISOString() });
+  const fnStartTime = Date.now();
+  console.log("========== REMINDER CREATE START ==========");
+  console.log("REMINDER CREATE START:", {
+    bookingId,
+    leadId,
+    movingDate,
+    timestamp: new Date().toISOString(),
+  });
 
   try {
     const moveDateTime = new Date(`${movingDate}T09:00:00`);
@@ -174,8 +241,12 @@ export async function createBookingReminders(
       reviewTime: reviewTime.toISOString(),
     });
 
+    console.log("CHECKING IF REMINDERS ALREADY EXIST...");
     const bookingReminderExists = await reminderExists(null, bookingId, "booking_reminder");
+    console.log("Booking reminder exists check: ", bookingReminderExists);
+    
     const reviewReminderExists = await reminderExists(null, bookingId, "review_request");
+    console.log("Review reminder exists check: ", reviewReminderExists);
 
     console.log("REMINDER EXISTENCE CHECK:", {
       bookingId,
@@ -186,57 +257,95 @@ export async function createBookingReminders(
     const toInsert = [];
 
     if (!bookingReminderExists) {
-      toInsert.push({
+      const record = {
         lead_id: leadId || null,
         quote_id: null,
         booking_id: bookingId,
         type: "booking_reminder",
         status: "pending",
         scheduled_for: reminderTime.toISOString(),
-      });
+      };
+      toInsert.push(record);
+      console.log("Added booking_reminder record to insert array:", record);
     }
 
     if (!reviewReminderExists) {
-      toInsert.push({
+      const record = {
         lead_id: leadId || null,
         quote_id: null,
         booking_id: bookingId,
         type: "review_request",
         status: "pending",
         scheduled_for: reviewTime.toISOString(),
-      });
+      };
+      toInsert.push(record);
+      console.log("Added review_request record to insert array:", record);
     }
 
-    console.log("REMINDER INSERT DATA:", {
-      bookingId,
-      leadId,
+    console.log("REMINDER DATA PREPARED:", {
+      table: "reminders",
+      schema: "public",
       recordCount: toInsert.length,
       records: JSON.stringify(toInsert, null, 2),
+      bookingId,
+      leadId,
     });
 
     if (toInsert.length > 0) {
-      console.log("EXECUTING SUPABASE INSERT...");
-      const { data, error } = await supabase.from("reminders").insert(toInsert);
+      console.log("========== EXECUTING SUPABASE INSERT ==========");
+      console.log("About to call: supabase.from('reminders').insert(toInsert)");
+      console.log("toInsert:", JSON.stringify(toInsert, null, 2));
+      
+      const { data, error, status } = await supabase
+        .from("reminders")
+        .insert(toInsert);
+
+      console.log("INSERT RETURNED:", {
+        status,
+        hasError: !!error,
+        hasData: !!data,
+        timestamp: new Date().toISOString(),
+      });
 
       if (error) {
+        console.log("========== REMINDER INSERT ERROR ==========");
         console.log("REMINDER INSERT ERROR:", {
           code: error?.code,
           message: error?.message,
           details: error?.details,
           hint: error?.hint,
+          statusCode: (error as any)?.statusCode,
+          status: (error as any)?.status,
+          fullError: JSON.stringify(error),
           bookingId,
           leadId,
           recordsAttempted: toInsert.length,
+          timestamp: new Date().toISOString(),
         });
         return false;
       }
 
+      console.log("========== REMINDER INSERT SUCCESS ==========");
       console.log("REMINDER INSERT SUCCESS:", {
         bookingId,
         leadId,
         recordsInserted: toInsert.length,
         data,
         timestamp: new Date().toISOString(),
+      });
+
+      // Verify insertion
+      console.log("VERIFYING INSERTED REMINDERS...");
+      const { data: verify, error: verifyError } = await supabase
+        .from("reminders")
+        .select("id, type, status, scheduled_for")
+        .eq("booking_id", bookingId);
+
+      console.log("VERIFICATION RESULT:", {
+        bookingId,
+        found: verify?.length || 0,
+        data: verify,
+        verifyError,
       });
     } else {
       console.log("REMINDER INSERT SKIPPED: All reminders already exist", {
@@ -246,8 +355,19 @@ export async function createBookingReminders(
       });
     }
 
+    const elapsed = Date.now() - fnStartTime;
+    console.log("========== REMINDER CREATE COMPLETE ==========");
+    console.log("REMINDER CREATION COMPLETED:", {
+      bookingId,
+      success: true,
+      elapsedMs: elapsed,
+      timestamp: new Date().toISOString(),
+    });
+
     return true;
   } catch (error) {
+    const elapsed = Date.now() - fnStartTime;
+    console.log("========== REMINDER INSERT ERROR (EXCEPTION) ==========");
     console.log("REMINDER INSERT ERROR:", {
       exception: true,
       errorMessage: error instanceof Error ? error.message : String(error),
@@ -255,6 +375,7 @@ export async function createBookingReminders(
       bookingId,
       leadId,
       movingDate,
+      elapsedMs: elapsed,
       timestamp: new Date().toISOString(),
     });
     return false;

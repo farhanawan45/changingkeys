@@ -535,11 +535,46 @@ export async function finalizeBookingPayment({
     .then((r) => r.data?.id));
 
   if (bookingToUse) {
-    await createBookingReminders(
+    console.log("CALLING createBookingReminders:", {
+      bookingId: bookingToUse,
+      leadId: lead.id,
+      movingDate: lead.moving_date,
+      timestamp: new Date().toISOString(),
+    });
+
+    const startTime = Date.now();
+    const reminderResult = await createBookingReminders(
       bookingToUse,
       lead.id,
       lead.moving_date
     );
+    const elapsed = Date.now() - startTime;
+
+    console.log("createBookingReminders RETURNED:", {
+      bookingId: bookingToUse,
+      success: reminderResult,
+      elapsedMs: elapsed,
+      timestamp: new Date().toISOString(),
+    });
+
+    // Verify reminders were created
+    const { data: verifyReminders, error: verifyError } = await supabase
+      .from("reminders")
+      .select("id, type, status, scheduled_for")
+      .eq("booking_id", bookingToUse);
+
+    console.log("BOOKING REMINDER VERIFICATION:", {
+      bookingId: bookingToUse,
+      remindersFound: verifyReminders?.length || 0,
+      reminders: verifyReminders,
+      verifyError,
+      timestamp: new Date().toISOString(),
+    });
+  } else {
+    console.log("BOOKING REMINDERS SKIPPED: No booking ID found", {
+      quoteId,
+      existingBooking: !!existingBooking,
+    });
   }
 
   if (lead.moving_date) {

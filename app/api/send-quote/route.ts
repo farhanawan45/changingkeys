@@ -259,18 +259,20 @@ export async function POST(req: Request) {
       timestamp: new Date().toISOString(),
     });
 
+    console.log("========== STARTING REMINDER CREATION FLOW ==========");
     console.log("STARTING REMINDER CREATION FLOW FOR QUOTE:", {
       quoteId,
       timestamp: new Date().toISOString(),
     });
 
+    console.log("LOOKING UP QUOTE FROM DATABASE...");
     const { data: quote, error: quoteError } = await supabase
       .from("quotes")
       .select("lead_id")
       .eq("id", quoteId)
       .single();
 
-    console.log("QUOTE LOOKUP FOR REMINDERS:", {
+    console.log("QUOTE LOOKUP RESULT:", {
       quoteId,
       quoteFound: !!quote,
       leadId: quote?.lead_id,
@@ -278,30 +280,42 @@ export async function POST(req: Request) {
       timestamp: new Date().toISOString(),
     });
 
-    if (quote) {
-      console.log("CALLING createQuoteFollowupReminders:", {
+    if (!quote) {
+      console.log("QUOTE LOOKUP FAILED - CANNOT CREATE REMINDERS:", {
+        quoteId,
+        error: quoteError,
+        timestamp: new Date().toISOString(),
+      });
+    } else {
+      console.log("QUOTE LOOKUP SUCCEEDED - CREATING REMINDERS:", {
         quoteId,
         leadId: quote.lead_id,
         timestamp: new Date().toISOString(),
       });
       
+      console.log("CALLING createQuoteFollowupReminders...");
+      const startTime = Date.now();
       const reminderResult = await createQuoteFollowupReminders(
         quoteId,
         quote.lead_id
       );
+      const elapsed = Date.now() - startTime;
       
       console.log("createQuoteFollowupReminders RETURNED:", {
         quoteId,
         success: reminderResult,
+        elapsedMs: elapsed,
         timestamp: new Date().toISOString(),
       });
 
       // Immediately verify reminders were created
+      console.log("VERIFYING REMINDERS IN DATABASE...");
       const { data: verifyReminders, error: verifyError } = await supabase
         .from("reminders")
-        .select("id, type, status, scheduled_for")
+        .select("id, type, status, scheduled_for, quote_id, lead_id")
         .eq("quote_id", quoteId);
 
+      console.log("========== REMINDER VERIFICATION AFTER INSERT ==========");
       console.log("REMINDER VERIFICATION AFTER INSERT:", {
         quoteId,
         remindersFound: verifyReminders?.length || 0,
@@ -309,13 +323,26 @@ export async function POST(req: Request) {
         verifyError,
         timestamp: new Date().toISOString(),
       });
-    } else {
-      console.log("QUOTE LOOKUP FAILED FOR REMINDER CREATION:", {
-        quoteId,
-        error: quoteError,
-        timestamp: new Date().toISOString(),
-      });
+
+      if (!verifyReminders || verifyReminders.length === 0) {
+        console.log("WARNING: NO REMINDERS FOUND AFTER INSERT ATTEMPT");
+        console.log("DIAGNOSTIC INFO:", {
+          quoteId,
+          leadId: quote.lead_id,
+          insertFunctionReturned: reminderResult,
+          databaseVerificationFound: 0,
+          possibleCauses: [
+            "RLS policy blocking inserts",
+            "Authentication issue",
+            "Column name mismatch",
+            "Insert was silently rolled back",
+            "Function did not actually call insert",
+          ],
+        });
+      }
     }
+
+    console.log("========== REMINDER CREATION FLOW COMPLETE ==========");
 
     return NextResponse.json({
       message: "Quote email sent successfully",
