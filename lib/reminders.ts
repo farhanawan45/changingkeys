@@ -51,12 +51,18 @@ export async function createQuoteFollowupReminders(
   quoteId: string,
   leadId?: string | null
 ): Promise<boolean> {
+  console.log("REMINDER CREATE START:", { quoteId, leadId, timestamp: new Date().toISOString() });
+  
   try {
-    console.log("REMINDER CREATION STARTING:", { quoteId, leadId });
-    
     const now = new Date();
     const followupTime = addHours(now, 24);
     const paymentPendingTime = addHours(now, 48);
+
+    console.log("REMINDER DATES CALCULATED:", {
+      now: now.toISOString(),
+      followupTime: followupTime.toISOString(),
+      paymentPendingTime: paymentPendingTime.toISOString(),
+    });
 
     const followupExists = await reminderExists(quoteId, null, "quote_followup");
     const paymentExists = await reminderExists(quoteId, null, "payment_pending");
@@ -91,40 +97,54 @@ export async function createQuoteFollowupReminders(
       });
     }
 
-    console.log("REMINDERS TO INSERT:", {
-      count: toInsert.length,
-      records: toInsert,
+    console.log("REMINDER INSERT DATA:", {
+      quoteId,
+      leadId,
+      recordCount: toInsert.length,
+      records: JSON.stringify(toInsert, null, 2),
     });
 
     if (toInsert.length > 0) {
+      console.log("EXECUTING SUPABASE INSERT...");
       const { data, error } = await supabase.from("reminders").insert(toInsert);
 
       if (error) {
-        console.log("REMINDER INSERT ERROR (quote followup):", {
-          error,
-          errorCode: error?.code,
-          errorMessage: error?.message,
-          toInsert,
+        console.log("REMINDER INSERT ERROR:", {
+          code: error?.code,
+          message: error?.message,
+          details: error?.details,
+          hint: error?.hint,
+          quoteId,
+          leadId,
+          recordsAttempted: toInsert.length,
         });
         return false;
       }
 
-      console.log("REMINDER CREATED:", {
+      console.log("REMINDER INSERT SUCCESS:", {
         quoteId,
-        count: toInsert.length,
-        followupAt: followupTime.toISOString(),
-        paymentAt: paymentPendingTime.toISOString(),
-        insertedData: data,
+        leadId,
+        recordsInserted: toInsert.length,
+        data,
+        timestamp: new Date().toISOString(),
+      });
+    } else {
+      console.log("REMINDER INSERT SKIPPED: All reminders already exist", {
+        quoteId,
+        followupExists,
+        paymentExists,
       });
     }
 
     return true;
   } catch (error) {
-    console.log("REMINDER INSERT ERROR (quote followup exception):", {
-      error,
+    console.log("REMINDER INSERT ERROR:", {
+      exception: true,
       errorMessage: error instanceof Error ? error.message : String(error),
+      errorStack: error instanceof Error ? error.stack : undefined,
       quoteId,
       leadId,
+      timestamp: new Date().toISOString(),
     });
     return false;
   }
@@ -136,21 +156,28 @@ export async function createBookingReminders(
   movingDate?: string | null
 ): Promise<boolean> {
   if (!movingDate) {
-    console.log("BOOKING REMINDERS SKIPPED: no moving date provided");
+    console.log("REMINDER CREATE START: BOOKING REMINDERS SKIPPED (no moving date)");
     return true;
   }
 
+  console.log("REMINDER CREATE START:", { bookingId, leadId, movingDate, timestamp: new Date().toISOString() });
+
   try {
-    console.log("BOOKING REMINDER CREATION STARTING:", { bookingId, leadId, movingDate });
-    
     const moveDateTime = new Date(`${movingDate}T09:00:00`);
     const reminderTime = addDays(moveDateTime, -1);
     const reviewTime = addDays(moveDateTime, 1);
 
+    console.log("REMINDER DATES CALCULATED:", {
+      movingDate,
+      moveDateTime: moveDateTime.toISOString(),
+      reminderTime: reminderTime.toISOString(),
+      reviewTime: reviewTime.toISOString(),
+    });
+
     const bookingReminderExists = await reminderExists(null, bookingId, "booking_reminder");
     const reviewReminderExists = await reminderExists(null, bookingId, "review_request");
 
-    console.log("BOOKING REMINDER EXISTENCE CHECK:", {
+    console.log("REMINDER EXISTENCE CHECK:", {
       bookingId,
       bookingReminderExists,
       reviewReminderExists,
@@ -180,41 +207,55 @@ export async function createBookingReminders(
       });
     }
 
-    console.log("BOOKING REMINDERS TO INSERT:", {
-      count: toInsert.length,
-      records: toInsert,
+    console.log("REMINDER INSERT DATA:", {
+      bookingId,
+      leadId,
+      recordCount: toInsert.length,
+      records: JSON.stringify(toInsert, null, 2),
     });
 
     if (toInsert.length > 0) {
+      console.log("EXECUTING SUPABASE INSERT...");
       const { data, error } = await supabase.from("reminders").insert(toInsert);
 
       if (error) {
-        console.log("REMINDER INSERT ERROR (booking):", {
-          error,
-          errorCode: error?.code,
-          errorMessage: error?.message,
-          toInsert,
+        console.log("REMINDER INSERT ERROR:", {
+          code: error?.code,
+          message: error?.message,
+          details: error?.details,
+          hint: error?.hint,
+          bookingId,
+          leadId,
+          recordsAttempted: toInsert.length,
         });
         return false;
       }
 
-      console.log("REMINDER CREATED:", {
+      console.log("REMINDER INSERT SUCCESS:", {
         bookingId,
-        count: toInsert.length,
-        reminderAt: reminderTime.toISOString(),
-        reviewAt: reviewTime.toISOString(),
-        insertedData: data,
+        leadId,
+        recordsInserted: toInsert.length,
+        data,
+        timestamp: new Date().toISOString(),
+      });
+    } else {
+      console.log("REMINDER INSERT SKIPPED: All reminders already exist", {
+        bookingId,
+        bookingReminderExists,
+        reviewReminderExists,
       });
     }
 
     return true;
   } catch (error) {
-    console.log("REMINDER INSERT ERROR (booking exception):", {
-      error,
+    console.log("REMINDER INSERT ERROR:", {
+      exception: true,
       errorMessage: error instanceof Error ? error.message : String(error),
+      errorStack: error instanceof Error ? error.stack : undefined,
       bookingId,
       leadId,
       movingDate,
+      timestamp: new Date().toISOString(),
     });
     return false;
   }

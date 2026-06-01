@@ -256,6 +256,12 @@ export async function POST(req: Request) {
       accepted: emailResult.accepted,
       rejected: emailResult.rejected,
       response: emailResult.response,
+      timestamp: new Date().toISOString(),
+    });
+
+    console.log("STARTING REMINDER CREATION FLOW FOR QUOTE:", {
+      quoteId,
+      timestamp: new Date().toISOString(),
     });
 
     const { data: quote, error: quoteError } = await supabase
@@ -269,25 +275,45 @@ export async function POST(req: Request) {
       quoteFound: !!quote,
       leadId: quote?.lead_id,
       quoteError,
+      timestamp: new Date().toISOString(),
     });
 
     if (quote) {
-      console.log("ATTEMPTING TO CREATE REMINDERS FOR QUOTE:", {
+      console.log("CALLING createQuoteFollowupReminders:", {
         quoteId,
         leadId: quote.lead_id,
+        timestamp: new Date().toISOString(),
       });
+      
       const reminderResult = await createQuoteFollowupReminders(
         quoteId,
         quote.lead_id
       );
-      console.log("REMINDER CREATION RESULT:", {
+      
+      console.log("createQuoteFollowupReminders RETURNED:", {
         quoteId,
         success: reminderResult,
+        timestamp: new Date().toISOString(),
+      });
+
+      // Immediately verify reminders were created
+      const { data: verifyReminders, error: verifyError } = await supabase
+        .from("reminders")
+        .select("id, type, status, scheduled_for")
+        .eq("quote_id", quoteId);
+
+      console.log("REMINDER VERIFICATION AFTER INSERT:", {
+        quoteId,
+        remindersFound: verifyReminders?.length || 0,
+        reminders: verifyReminders,
+        verifyError,
+        timestamp: new Date().toISOString(),
       });
     } else {
       console.log("QUOTE LOOKUP FAILED FOR REMINDER CREATION:", {
         quoteId,
         error: quoteError,
+        timestamp: new Date().toISOString(),
       });
     }
 
