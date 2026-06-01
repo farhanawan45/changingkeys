@@ -79,11 +79,12 @@ export default function QuoteDetailPage() {
             toast.error(
               "Payment succeeded, but booking confirmation could not be finalised"
             );
-          } else {
-            toast.success("Payment successful");
+          } else if (data?.result?.emailResult?.sent === false) {
+            console.log("BOOKING CONFIRMATION EMAIL FAILURE:", data);
+            toast.error(
+              "Payment succeeded, but booking confirmation email failed to send"
+            );
           }
-
-          fetchQuote();
         }
       }
     }
@@ -155,6 +156,10 @@ export default function QuoteDetailPage() {
       if (!response.ok) {
         console.log("BOOKING CONFIRMATION ERROR:", data);
         toast.error("Error marking quote as paid");
+      } else if (data?.result?.emailResult?.sent === false) {
+        console.log("BOOKING CONFIRMATION EMAIL FAILURE:", data);
+        toast.error("Quote marked as paid but email confirmation failed to send");
+        fetchQuote();
       } else {
         toast.success("Quote marked as paid and booking created");
         fetchQuote();

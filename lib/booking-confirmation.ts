@@ -4,6 +4,7 @@ import {
   createSmtpTransporter,
   getEmailErrorDetails,
   getSmtpConfig,
+  isSmtpSendSuccessful,
 } from "@/lib/email";
 import { supabase } from "@/lib/supabase";
 import { createBookingReminders } from "@/lib/reminders";
@@ -359,6 +360,41 @@ export async function sendBookingConfirmationEmail({
       response: emailResult.response,
     });
 
+    const emailAccepted = isSmtpSendSuccessful(emailResult);
+    console.log("SMTP BOOKING EMAIL DELIVERY CHECK:", {
+      emailAccepted,
+      accepted: emailResult.accepted,
+      rejected: emailResult.rejected,
+      response: emailResult.response,
+    });
+
+    if (!emailAccepted) {
+      const failureDetails = {
+        message: "SMTP did not accept the booking confirmation email",
+        accepted: emailResult.accepted,
+        rejected: emailResult.rejected,
+        response: emailResult.response,
+      };
+
+      console.log("SMTP BOOKING EMAIL REJECTED:", failureDetails);
+
+      await insertNotification({
+        title: BOOKING_CONFIRMATION_FAILED_TITLE(quoteId),
+        message: `Booking confirmation email was not accepted by SMTP for quote ${quoteId}. ${JSON.stringify(
+          failureDetails
+        )}`,
+        type: "email",
+        leadId,
+      });
+
+      return {
+        sent: false,
+        error: failureDetails,
+        accepted: emailResult.accepted,
+        rejected: emailResult.rejected,
+      };
+    }
+
     await insertNotification({
       title: successTitle,
       message: `Booking confirmation email sent to ${emailToSend} for quote ${quoteId}.`,
@@ -366,7 +402,11 @@ export async function sendBookingConfirmationEmail({
       leadId,
     });
 
-    return { sent: true };
+    return {
+      sent: true,
+      accepted: emailResult.accepted,
+      rejected: emailResult.rejected,
+    };
   } catch (emailError) {
     const details = getEmailErrorDetails(emailError);
     console.log("SMTP BOOKING EMAIL ERROR:", details);

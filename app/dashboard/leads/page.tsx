@@ -34,42 +34,27 @@ export default function LeadsPage() {
 
     setDeletingId(id);
 
-    const { error: bookingsError } = await supabase
-      .from("bookings")
-      .delete()
-      .eq("lead_id", id);
+    try {
+      const response = await fetch("/api/leads/delete", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ leadId: id }),
+      });
 
-    if (bookingsError) {
-      toast.error("Failed to delete related bookings");
-      console.log(bookingsError);
-      setDeletingId(null);
-      return;
-    }
+      const data = await response.json().catch(() => null);
 
-    const { error: quotesError } = await supabase
-      .from("quotes")
-      .delete()
-      .eq("lead_id", id);
-
-    if (quotesError) {
-      toast.error("Failed to delete related quotes");
-      console.log(quotesError);
-      setDeletingId(null);
-      return;
-    }
-
-    const { error } = await supabase
-      .from("leads")
-      .delete()
-      .eq("id", id);
-
-    if (error) {
+      if (!response.ok) {
+        console.log("LEAD DELETE ERROR:", data);
+        toast.error(data?.error || "Failed to delete lead");
+      } else {
+        toast.success("Lead deleted successfully");
+        setLeads((prev) => prev.filter((lead) => lead.id !== id));
+      }
+    } catch (error) {
+      console.log("LEAD DELETE NETWORK ERROR:", error);
       toast.error("Failed to delete lead");
-      console.log(error);
-    } else {
-      toast.success("Lead deleted successfully");
-
-      setLeads((prev) => prev.filter((lead) => lead.id !== id));
     }
 
     setDeletingId(null);

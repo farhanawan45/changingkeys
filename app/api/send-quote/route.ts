@@ -4,6 +4,7 @@ import {
   createSmtpTransporter,
   getEmailErrorDetails,
   getSmtpConfig,
+  isSmtpSendSuccessful,
 } from "@/lib/email";
 import { stripe } from "@/lib/stripe";
 import { createQuoteFollowupReminders } from "@/lib/reminders";
@@ -258,6 +259,24 @@ export async function POST(req: Request) {
       response: emailResult.response,
       timestamp: new Date().toISOString(),
     });
+
+    const emailAccepted = isSmtpSendSuccessful(emailResult);
+    console.log("SMTP QUOTE EMAIL DELIVERY CHECK:", {
+      emailAccepted,
+      accepted: emailResult.accepted,
+      rejected: emailResult.rejected,
+      response: emailResult.response,
+    });
+
+    if (!emailAccepted) {
+      throw new Error(
+        `SMTP email was not accepted by the mail server. accepted=${JSON.stringify(
+          emailResult.accepted
+        )}, rejected=${JSON.stringify(emailResult.rejected)}, response=${
+          emailResult.response
+        }`
+      );
+    }
 
     console.log("========== STARTING REMINDER CREATION FLOW ==========");
     console.log("STARTING REMINDER CREATION FLOW FOR QUOTE:", {

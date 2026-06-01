@@ -12,6 +12,13 @@ export function getEmailErrorDetails(error: unknown) {
   return error;
 }
 
+export function isSmtpSendSuccessful(result: nodemailer.SentMessageInfo) {
+  const accepted = Array.isArray(result.accepted) ? result.accepted : [];
+  const rejected = Array.isArray(result.rejected) ? result.rejected : [];
+
+  return accepted.length > 0 && rejected.length === 0;
+}
+
 export function getSmtpConfig() {
   const host = process.env.SMTP_HOST || "smtp.gmail.com";
   const port = Number(process.env.SMTP_PORT || 465);
