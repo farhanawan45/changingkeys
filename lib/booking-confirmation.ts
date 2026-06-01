@@ -547,6 +547,13 @@ export async function finalizeBookingPayment({
     }
   }
 
+  console.log("BOOKING DATE SOURCE", {
+    quoteId,
+    leadId: lead.id,
+    movingDate: lead.moving_date,
+    timestamp: new Date().toISOString(),
+  });
+
   const { data: existingBooking } = await supabase
     .from("bookings")
     .select("*")
@@ -559,12 +566,27 @@ export async function finalizeBookingPayment({
         quote_id: quoteId,
         lead_id: lead.id,
         status: bookingStatus,
+        booking_date: lead.moving_date || null,
       },
     ]);
 
     if (bookingError) {
       console.log("BOOKING CONFIRMATION ERROR: booking create failed", bookingError);
+    } else {
+      console.log("BOOKING DATE SAVED", {
+        quoteId,
+        leadId: lead.id,
+        bookingDate: lead.moving_date,
+        timestamp: new Date().toISOString(),
+      });
     }
+  } else {
+    console.log("BOOKING ALREADY EXISTS", {
+      bookingId: existingBooking.id,
+      quoteId,
+      existingBookingDate: existingBooking.booking_date,
+      timestamp: new Date().toISOString(),
+    });
   }
 
   const bookingToUse = existingBooking?.id || (await supabase
@@ -646,9 +668,10 @@ export async function finalizeBookingPayment({
   }
 
   if (!lead.moving_date) {
-    console.log("GOOGLE CALENDAR SKIPPED: no moving date provided", {
+    console.log("GOOGLE CALENDAR SKIPPED MISSING DATE: lead has no moving date", {
       quoteId,
       bookingId: bookingToUse,
+      leadId: lead.id,
       timestamp: new Date().toISOString(),
     });
   } else if (bookingCalendarEventId) {
@@ -659,8 +682,22 @@ export async function finalizeBookingPayment({
     });
   } else {
     try {
+      const bookingDateToUse = lead.moving_date;
+
+      if (!bookingDateToUse) {
+        console.log("GOOGLE CALENDAR SKIPPED MISSING DATE: could not resolve booking date", {
+          quoteId,
+          bookingId: bookingToUse,
+          leadMovingDate: lead.moving_date,
+          timestamp: new Date().toISOString(),
+        });
+        throw new Error(
+          "Cannot create calendar event: no booking date available"
+        );
+      }
+
       const { startDateTime, endDateTime } = buildBookingDateTime(
-        lead.moving_date
+        bookingDateToUse
       );
 
       console.log("GOOGLE CALENDAR START", {
