@@ -547,7 +547,7 @@ export async function finalizeBookingPayment({
     }
   }
 
-  console.log("BOOKING DATE SOURCE", {
+  console.log("[BOOKING] BOOKING DATE SOURCE", {
     quoteId,
     leadId: lead.id,
     movingDate: lead.moving_date,
@@ -561,19 +561,37 @@ export async function finalizeBookingPayment({
     .maybeSingle();
 
   if (!existingBooking) {
+    console.log("[BOOKING] WEBHOOK BOOKING INSERT START", {
+      quoteId,
+      leadId: lead.id,
+      timestamp: new Date().toISOString(),
+    });
+
+    const bookingData = {
+      quote_id: quoteId,
+      lead_id: lead.id,
+      status: bookingStatus,
+      booking_date: lead.moving_date || null,
+    };
+
+    console.log("[BOOKING] WEBHOOK BOOKING INSERT DATA", {
+      quoteId,
+      data: bookingData,
+      timestamp: new Date().toISOString(),
+    });
+
     const { error: bookingError } = await supabase.from("bookings").insert([
-      {
-        quote_id: quoteId,
-        lead_id: lead.id,
-        status: bookingStatus,
-        booking_date: lead.moving_date || null,
-      },
+      bookingData,
     ]);
 
     if (bookingError) {
-      console.log("BOOKING CONFIRMATION ERROR: booking create failed", bookingError);
+      console.log("[BOOKING] WEBHOOK BOOKING INSERT ERROR", {
+        quoteId,
+        error: bookingError,
+        timestamp: new Date().toISOString(),
+      });
     } else {
-      console.log("BOOKING DATE SAVED", {
+      console.log("[BOOKING] WEBHOOK BOOKING INSERT SUCCESS", {
         quoteId,
         leadId: lead.id,
         bookingDate: lead.moving_date,
@@ -581,7 +599,7 @@ export async function finalizeBookingPayment({
       });
     }
   } else {
-    console.log("BOOKING ALREADY EXISTS", {
+    console.log("[BOOKING] BOOKING ALREADY EXISTS", {
       bookingId: existingBooking.id,
       quoteId,
       existingBookingDate: existingBooking.booking_date,
@@ -643,7 +661,7 @@ export async function finalizeBookingPayment({
       .single();
 
     if (bookingSelectError) {
-      console.log("BOOKING CALENDAR INFO QUERY FAILED:", {
+      console.log("[CALENDAR] BOOKING CALENDAR INFO QUERY FAILED:", {
         bookingId: bookingToUse,
         error: bookingSelectError,
         timestamp: new Date().toISOString(),
@@ -654,28 +672,36 @@ export async function finalizeBookingPayment({
         "calendar_event_id"
       );
       bookingCalendarEventId = bookingRecord.calendar_event_id;
-      console.log("BOOKING CALENDAR FIELD CHECK:", {
+      console.log("[CALENDAR] BOOKING CALENDAR FIELD CHECK:", {
         bookingId: bookingToUse,
         bookingSupportsCalendarIdField,
         bookingCalendarEventId,
       });
     }
   } else {
-    console.log("BOOKING REMINDERS SKIPPED: No booking ID found", {
+    console.log("[BOOKING] BOOKING REMINDERS SKIPPED: No booking ID found", {
       quoteId,
       existingBooking: !!existingBooking,
     });
   }
 
+  console.log("[CALENDAR] CALENDAR LOGIC START", {
+    quoteId,
+    bookingId: bookingToUse,
+    leadMovingDate: lead.moving_date,
+    bookingCalendarEventId,
+    timestamp: new Date().toISOString(),
+  });
+
   if (!lead.moving_date) {
-    console.log("GOOGLE CALENDAR SKIPPED MISSING DATE: lead has no moving date", {
+    console.log("[CALENDAR] GOOGLE CALENDAR SKIPPED MISSING DATE: lead has no moving date", {
       quoteId,
       bookingId: bookingToUse,
       leadId: lead.id,
       timestamp: new Date().toISOString(),
     });
   } else if (bookingCalendarEventId) {
-    console.log("GOOGLE CALENDAR SKIPPED: calendar_event_id already exists", {
+    console.log("[CALENDAR] GOOGLE CALENDAR SKIPPED: calendar_event_id already exists", {
       bookingId: bookingToUse,
       calendar_event_id: bookingCalendarEventId,
       timestamp: new Date().toISOString(),
@@ -684,8 +710,15 @@ export async function finalizeBookingPayment({
     try {
       const bookingDateToUse = lead.moving_date;
 
+      console.log("[CALENDAR] GOOGLE CALENDAR PROCEEDING", {
+        quoteId,
+        bookingId: bookingToUse,
+        bookingDate: bookingDateToUse,
+        timestamp: new Date().toISOString(),
+      });
+
       if (!bookingDateToUse) {
-        console.log("GOOGLE CALENDAR SKIPPED MISSING DATE: could not resolve booking date", {
+        console.log("[CALENDAR] GOOGLE CALENDAR SKIPPED MISSING DATE: could not resolve booking date", {
           quoteId,
           bookingId: bookingToUse,
           leadMovingDate: lead.moving_date,
@@ -700,7 +733,7 @@ export async function finalizeBookingPayment({
         bookingDateToUse
       );
 
-      console.log("GOOGLE CALENDAR START", {
+      console.log("[CALENDAR] GOOGLE CALENDAR START", {
         quoteId,
         bookingId: bookingToUse,
         customerName: lead.customer_name,
@@ -718,7 +751,7 @@ export async function finalizeBookingPayment({
         endDateTime,
       });
 
-      console.log("GOOGLE CALENDAR EVENT CREATED", {
+      console.log("[CALENDAR] GOOGLE CALENDAR EVENT CREATED", {
         bookingId: bookingToUse,
         eventId: eventData.id,
         htmlLink: eventData.htmlLink,
@@ -734,28 +767,28 @@ export async function finalizeBookingPayment({
           .eq("id", bookingToUse);
 
         if (updateError) {
-          console.log("BOOKING CALENDAR EVENT ID UPDATE FAILED:", {
+          console.log("[CALENDAR] BOOKING CALENDAR EVENT ID UPDATE FAILED:", {
             bookingId: bookingToUse,
             eventId: eventData.id,
             error: updateError,
             timestamp: new Date().toISOString(),
           });
         } else {
-          console.log("BOOKING CALENDAR EVENT ID UPDATED ON BOOKING", {
+          console.log("[CALENDAR] BOOKING CALENDAR EVENT ID UPDATED ON BOOKING", {
             bookingId: bookingToUse,
             eventId: eventData.id,
             timestamp: new Date().toISOString(),
           });
         }
       } else if (!bookingSupportsCalendarIdField) {
-        console.log("BOOKING CALENDAR FIELD MISSING: calendar_event_id not available on bookings table", {
+        console.log("[CALENDAR] BOOKING CALENDAR FIELD MISSING: calendar_event_id not available on bookings table", {
           bookingId: bookingToUse,
           eventId: eventData.id,
           timestamp: new Date().toISOString(),
         });
       }
     } catch (calendarError) {
-      console.log("GOOGLE CALENDAR ERROR", {
+      console.log("[CALENDAR] GOOGLE CALENDAR ERROR", {
         quoteId,
         bookingId: bookingToUse,
         error: calendarError instanceof Error ? calendarError.message : calendarError,

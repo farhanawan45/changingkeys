@@ -4,12 +4,13 @@ import { stripe } from "@/lib/stripe";
 import { finalizeBookingPayment } from "@/lib/booking-confirmation";
 
 export async function POST(req: Request) {
-  console.log("STRIPE WEBHOOK ROUTE HIT");
+  console.log("[WEBHOOK] STRIPE WEBHOOK ROUTE HIT", new Date().toISOString());
 
   const body = await req.text();
   const signature = req.headers.get("stripe-signature");
 
   if (!signature) {
+    console.log("[WEBHOOK] Missing stripe signature");
     return NextResponse.json(
       { error: "Missing stripe signature" },
       { status: 400 }
@@ -25,7 +26,7 @@ export async function POST(req: Request) {
       process.env.STRIPE_WEBHOOK_SECRET!
     );
   } catch (error) {
-    console.log("Webhook signature error:", error);
+    console.log("[WEBHOOK] Webhook signature error:", error);
 
     return NextResponse.json(
       { error: "Invalid webhook signature" },
@@ -33,15 +34,21 @@ export async function POST(req: Request) {
     );
   }
 
-  console.log("Webhook received:", event.type);
+  console.log("[WEBHOOK] Event received:", event.type, new Date().toISOString());
 
   if (event.type === "checkout.session.completed") {
     const session = event.data.object as Stripe.Checkout.Session;
     const quoteId = session.metadata?.quoteId;
 
-    console.log("checkout.session.completed triggered");
+    console.log("[WEBHOOK] checkout.session.completed triggered", {
+      quoteId,
+      amount_total: session.amount_total,
+      payment_intent: session.payment_intent,
+      timestamp: new Date().toISOString(),
+    });
 
     if (!quoteId) {
+      console.log("[WEBHOOK] Missing quote id in metadata");
       return NextResponse.json(
         { error: "Missing quote id" },
         { status: 400 }
@@ -49,7 +56,13 @@ export async function POST(req: Request) {
     }
 
     try {
-      await finalizeBookingPayment({
+      console.log("[WEBHOOK] Calling finalizeBookingPayment", {
+        quoteId,
+        paymentMethod: "Card (Stripe)",
+        timestamp: new Date().toISOString(),
+      });
+
+      const finalizeResult = await finalizeBookingPayment({
         quoteId,
         paymentMethod: "Card (Stripe)",
         paymentAmount:
@@ -60,9 +73,20 @@ export async function POST(req: Request) {
           ? session.payment_intent
           : undefined,
       });
+
+      console.log("[WEBHOOK] finalizeBookingPayment completed", {
+        result: finalizeResult,
+        timestamp: new Date().toISOString(),
+      });
     } catch (finalizeError) {
-      console.log("Stripe webhook finalize error:", finalizeError);
+      console.log("[WEBHOOK] finalizeBookingPayment error:", {
+        error: finalizeError instanceof Error ? finalizeError.message : finalizeError,
+        stack: finalizeError instanceof Error ? finalizeError.stack : undefined,
+        timestamp: new Date().toISOString(),
+      });
     }
+  } else {
+    console.log("[WEBHOOK] Event type not checkout.session.completed, ignoring", event.type);
   }
 
   return NextResponse.json({
