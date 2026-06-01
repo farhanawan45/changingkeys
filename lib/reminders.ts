@@ -52,12 +52,20 @@ export async function createQuoteFollowupReminders(
   leadId?: string | null
 ): Promise<boolean> {
   try {
+    console.log("REMINDER CREATION STARTING:", { quoteId, leadId });
+    
     const now = new Date();
     const followupTime = addHours(now, 24);
     const paymentPendingTime = addHours(now, 48);
 
     const followupExists = await reminderExists(quoteId, null, "quote_followup");
     const paymentExists = await reminderExists(quoteId, null, "payment_pending");
+
+    console.log("REMINDER EXISTENCE CHECK:", {
+      quoteId,
+      followupExists,
+      paymentExists,
+    });
 
     const toInsert = [];
 
@@ -83,24 +91,41 @@ export async function createQuoteFollowupReminders(
       });
     }
 
+    console.log("REMINDERS TO INSERT:", {
+      count: toInsert.length,
+      records: toInsert,
+    });
+
     if (toInsert.length > 0) {
-      const { error } = await supabase.from("reminders").insert(toInsert);
+      const { data, error } = await supabase.from("reminders").insert(toInsert);
 
       if (error) {
-        console.log("REMINDER CREATE ERROR (quote followup):", error);
+        console.log("REMINDER INSERT ERROR (quote followup):", {
+          error,
+          errorCode: error?.code,
+          errorMessage: error?.message,
+          toInsert,
+        });
         return false;
       }
 
-      console.log("REMINDERS CREATED FOR QUOTE:", {
+      console.log("REMINDER CREATED:", {
         quoteId,
+        count: toInsert.length,
         followupAt: followupTime.toISOString(),
         paymentAt: paymentPendingTime.toISOString(),
+        insertedData: data,
       });
     }
 
     return true;
   } catch (error) {
-    console.log("REMINDER CREATE EXCEPTION (quote followup):", error);
+    console.log("REMINDER INSERT ERROR (quote followup exception):", {
+      error,
+      errorMessage: error instanceof Error ? error.message : String(error),
+      quoteId,
+      leadId,
+    });
     return false;
   }
 }
@@ -116,12 +141,20 @@ export async function createBookingReminders(
   }
 
   try {
+    console.log("BOOKING REMINDER CREATION STARTING:", { bookingId, leadId, movingDate });
+    
     const moveDateTime = new Date(`${movingDate}T09:00:00`);
     const reminderTime = addDays(moveDateTime, -1);
     const reviewTime = addDays(moveDateTime, 1);
 
     const bookingReminderExists = await reminderExists(null, bookingId, "booking_reminder");
     const reviewReminderExists = await reminderExists(null, bookingId, "review_request");
+
+    console.log("BOOKING REMINDER EXISTENCE CHECK:", {
+      bookingId,
+      bookingReminderExists,
+      reviewReminderExists,
+    });
 
     const toInsert = [];
 
@@ -147,24 +180,42 @@ export async function createBookingReminders(
       });
     }
 
+    console.log("BOOKING REMINDERS TO INSERT:", {
+      count: toInsert.length,
+      records: toInsert,
+    });
+
     if (toInsert.length > 0) {
-      const { error } = await supabase.from("reminders").insert(toInsert);
+      const { data, error } = await supabase.from("reminders").insert(toInsert);
 
       if (error) {
-        console.log("REMINDER CREATE ERROR (booking):", error);
+        console.log("REMINDER INSERT ERROR (booking):", {
+          error,
+          errorCode: error?.code,
+          errorMessage: error?.message,
+          toInsert,
+        });
         return false;
       }
 
-      console.log("REMINDERS CREATED FOR BOOKING:", {
+      console.log("REMINDER CREATED:", {
         bookingId,
+        count: toInsert.length,
         reminderAt: reminderTime.toISOString(),
         reviewAt: reviewTime.toISOString(),
+        insertedData: data,
       });
     }
 
     return true;
   } catch (error) {
-    console.log("REMINDER CREATE EXCEPTION (booking):", error);
+    console.log("REMINDER INSERT ERROR (booking exception):", {
+      error,
+      errorMessage: error instanceof Error ? error.message : String(error),
+      bookingId,
+      leadId,
+      movingDate,
+    });
     return false;
   }
 }

@@ -258,14 +258,37 @@ export async function POST(req: Request) {
       response: emailResult.response,
     });
 
-    const { data: quote } = await supabase
+    const { data: quote, error: quoteError } = await supabase
       .from("quotes")
       .select("lead_id")
       .eq("id", quoteId)
       .single();
 
-    if (quote?.lead_id) {
-      await createQuoteFollowupReminders(quoteId, quote.lead_id);
+    console.log("QUOTE LOOKUP FOR REMINDERS:", {
+      quoteId,
+      quoteFound: !!quote,
+      leadId: quote?.lead_id,
+      quoteError,
+    });
+
+    if (quote) {
+      console.log("ATTEMPTING TO CREATE REMINDERS FOR QUOTE:", {
+        quoteId,
+        leadId: quote.lead_id,
+      });
+      const reminderResult = await createQuoteFollowupReminders(
+        quoteId,
+        quote.lead_id
+      );
+      console.log("REMINDER CREATION RESULT:", {
+        quoteId,
+        success: reminderResult,
+      });
+    } else {
+      console.log("QUOTE LOOKUP FAILED FOR REMINDER CREATION:", {
+        quoteId,
+        error: quoteError,
+      });
     }
 
     return NextResponse.json({
