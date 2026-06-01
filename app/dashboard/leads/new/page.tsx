@@ -12,6 +12,7 @@ export default function NewLeadPage() {
   const [customerEmail, setCustomerEmail] = useState("");
   const [pickupAddress, setPickupAddress] = useState("");
   const [dropoffAddress, setDropoffAddress] = useState("");
+  const [movingDate, setMovingDate] = useState("");
   const [isSaving, setIsSaving] = useState(false);
 
   async function createLead(e: any) {
@@ -19,24 +20,37 @@ export default function NewLeadPage() {
 
     if (isSaving) return;
 
-    if (!customerName || !customerEmail || !pickupAddress || !dropoffAddress) {
+    if (!customerName || !customerEmail || !pickupAddress || !dropoffAddress || !movingDate) {
       toast.error("Please fill all fields");
       return;
     }
 
     setIsSaving(true);
 
+    console.log("LEAD CREATE MOVING DATE INPUT", {
+      movingDate,
+      customerName,
+      customerEmail,
+      timestamp: new Date().toISOString(),
+    });
+
+    const leadInsertData = {
+      customer_name: customerName,
+      customer_email: customerEmail,
+      pickup_address: pickupAddress,
+      dropoff_address: dropoffAddress,
+      moving_date: movingDate,
+      status: "new",
+    };
+
+    console.log("LEAD CREATE INSERT DATA", {
+      leadInsertData,
+      timestamp: new Date().toISOString(),
+    });
+
     const { data: lead, error } = await supabase
       .from("leads")
-      .insert([
-        {
-          customer_name: customerName,
-          customer_email: customerEmail,
-          pickup_address: pickupAddress,
-          dropoff_address: dropoffAddress,
-          status: "new",
-        },
-      ])
+      .insert([leadInsertData])
       .select()
       .single();
 
@@ -45,6 +59,13 @@ export default function NewLeadPage() {
       console.log(error);
       setIsSaving(false);
     } else {
+      console.log("LEAD CREATE SUCCESS", {
+        leadId: lead.id,
+        movingDate: lead.moving_date,
+        lead,
+        timestamp: new Date().toISOString(),
+      });
+
       const { error: notificationError } = await supabase
         .from("notifications")
         .insert([
@@ -137,6 +158,19 @@ export default function NewLeadPage() {
               placeholder="Dropoff location"
               value={dropoffAddress}
               onChange={(e) => setDropoffAddress(e.target.value)}
+              className="w-full rounded-xl border p-4 text-slate-900 outline-none placeholder:text-slate-400 focus:border-emerald-500"
+            />
+          </div>
+
+          <div>
+            <label className="mb-2 block text-sm font-semibold text-slate-700">
+              Moving Date
+            </label>
+
+            <input
+              type="date"
+              value={movingDate}
+              onChange={(e) => setMovingDate(e.target.value)}
               className="w-full rounded-xl border p-4 text-slate-900 outline-none placeholder:text-slate-400 focus:border-emerald-500"
             />
           </div>

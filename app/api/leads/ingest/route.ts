@@ -43,22 +43,34 @@ export async function POST(req: Request) {
     const miles = distanceMiles ? Number(distanceMiles) : 0;
     const items = itemsCount ? Number(itemsCount) : 0;
 
+    console.log("LEAD CREATE MOVING DATE INPUT", {
+      movingDate,
+      customerName,
+      customerEmail,
+      timestamp: new Date().toISOString(),
+    });
+
+    const leadInsertData = {
+      customer_name: customerName || "",
+      customer_email: customerEmail || "",
+      customer_phone: customerPhone || "",
+      pickup_address: pickupAddress || "",
+      dropoff_address: dropoffAddress || "",
+      moving_date: movingDate || null,
+      estimated_hours: hours,
+      distance_miles: miles,
+      items_count: items,
+      status: "new",
+    };
+
+    console.log("LEAD CREATE INSERT DATA", {
+      leadInsertData,
+      timestamp: new Date().toISOString(),
+    });
+
     const { data: lead, error: leadError } = await supabase
       .from("leads")
-      .insert([
-        {
-          customer_name: customerName || "",
-          customer_email: customerEmail || "",
-          customer_phone: customerPhone || "",
-          pickup_address: pickupAddress || "",
-          dropoff_address: dropoffAddress || "",
-          moving_date: movingDate || null,
-          estimated_hours: hours,
-          distance_miles: miles,
-          items_count: items,
-          status: "new",
-        },
-      ])
+      .insert([leadInsertData])
       .select()
       .single();
 
@@ -73,6 +85,13 @@ export async function POST(req: Request) {
         { status: 500 }
       );
     }
+
+    console.log("LEAD CREATE SUCCESS", {
+      leadId: lead.id,
+      movingDate: lead.moving_date,
+      lead,
+      timestamp: new Date().toISOString(),
+    });
 
     const { error: notificationError } = await supabase
       .from("notifications")
