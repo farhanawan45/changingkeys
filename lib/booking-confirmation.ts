@@ -534,6 +534,9 @@ export async function finalizeBookingPayment({
     .single()
     .then((r) => r.data?.id));
 
+  let bookingCalendarEventId: string | null | undefined = undefined;
+  let bookingSupportsCalendarIdField = false;
+
   if (bookingToUse) {
     console.log("CALLING createBookingReminders:", {
       bookingId: bookingToUse,
@@ -570,6 +573,31 @@ export async function finalizeBookingPayment({
       verifyError,
       timestamp: new Date().toISOString(),
     });
+
+    const { data: bookingRecord, error: bookingSelectError } = await supabase
+      .from("bookings")
+      .select("id, calendar_event_id")
+      .eq("id", bookingToUse)
+      .single();
+
+    if (bookingSelectError) {
+      console.log("BOOKING CALENDAR INFO QUERY FAILED:", {
+        bookingId: bookingToUse,
+        error: bookingSelectError,
+        timestamp: new Date().toISOString(),
+      });
+    } else if (bookingRecord) {
+      bookingSupportsCalendarIdField = Object.prototype.hasOwnProperty.call(
+        bookingRecord,
+        "calendar_event_id"
+      );
+      bookingCalendarEventId = bookingRecord.calendar_event_id;
+      console.log("BOOKING CALENDAR FIELD CHECK:", {
+        bookingId: bookingToUse,
+        bookingSupportsCalendarIdField,
+        bookingCalendarEventId,
+      });
+    }
   } else {
     console.log("BOOKING REMINDERS SKIPPED: No booking ID found", {
       quoteId,
@@ -577,20 +605,87 @@ export async function finalizeBookingPayment({
     });
   }
 
-  if (lead.moving_date) {
+  if (!lead.moving_date) {
+    console.log("GOOGLE CALENDAR SKIPPED: no moving date provided", {
+      quoteId,
+      bookingId: bookingToUse,
+      timestamp: new Date().toISOString(),
+    });
+  } else if (bookingCalendarEventId) {
+    console.log("GOOGLE CALENDAR SKIPPED: calendar_event_id already exists", {
+      bookingId: bookingToUse,
+      calendar_event_id: bookingCalendarEventId,
+      timestamp: new Date().toISOString(),
+    });
+  } else {
     try {
       const { startDateTime, endDateTime } = buildBookingDateTime(
         lead.moving_date
       );
 
-      await createCalendarBooking({
-        summary: `Changing Keys Move - ${lead.customer_name || "Customer"}`,
-        description: `Customer: ${lead.customer_name || "Not added"}\nEmail: ${lead.customer_email || "Not added"}\nPhone: ${lead.customer_phone || "Not added"}\nPickup: ${lead.pickup_address || "Not added"}\nDropoff: ${lead.dropoff_address || "Not added"}\nQuote: GBP ${quote.price}\nQuote ID: ${quote.id}`,
+      console.log("GOOGLE CALENDAR START", {
+        quoteId,
+        bookingId: bookingToUse,
+        customerName: lead.customer_name,
+        movingDate: lead.moving_date,
+        pickupAddress: lead.pickup_address,
+        dropoffAddress: lead.dropoff_address,
+        timestamp: new Date().toISOString(),
+      });
+
+      const eventData = await createCalendarBooking({
+        summary: `Changing Keys Booking - ${lead.customer_name || "Customer"}`,
+        description: `Customer: ${lead.customer_name || "Not added"}\nEmail: ${lead.customer_email || "Not added"}\nPhone: ${lead.customer_phone || "Not added"}\nPickup: ${lead.pickup_address || "Not added"}\nDropoff: ${lead.dropoff_address || "Not added"}\nQuote ID: ${quote.id}\nBooking ID: ${bookingToUse}`,
+        location: lead.pickup_address || undefined,
         startDateTime,
         endDateTime,
       });
+
+      console.log("GOOGLE CALENDAR EVENT CREATED", {
+        bookingId: bookingToUse,
+        eventId: eventData.id,
+        htmlLink: eventData.htmlLink,
+        start: eventData.start,
+        end: eventData.end,
+        timestamp: new Date().toISOString(),
+      });
+
+      if (bookingSupportsCalendarIdField && eventData.id) {
+        const { error: updateError } = await supabase
+          .from("bookings")
+          .update({ calendar_event_id: eventData.id })
+          .eq("id", bookingToUse);
+
+        if (updateError) {
+          console.log("BOOKING CALENDAR EVENT ID UPDATE FAILED:", {
+            bookingId: bookingToUse,
+            eventId: eventData.id,
+            error: updateError,
+            timestamp: new Date().toISOString(),
+          });
+        } else {
+          console.log("BOOKING CALENDAR EVENT ID UPDATED ON BOOKING", {
+            bookingId: bookingToUse,
+            eventId: eventData.id,
+            timestamp: new Date().toISOString(),
+          });
+        }
+      } else if (!bookingSupportsCalendarIdField) {
+        console.log("BOOKING CALENDAR FIELD MISSING: calendar_event_id not available on bookings table", {
+          bookingId: bookingToUse,
+          eventId: eventData.id,
+          timestamp: new Date().toISOString(),
+        });
+      }
     } catch (calendarError) {
-      console.log("Calendar booking failed:", calendarError);
+      console.log("GOOGLE CALENDAR ERROR", {
+        quoteId,
+        bookingId: bookingToUse,
+        error: calendarError instanceof Error ? calendarError.message : calendarError,
+        stack: calendarError instanceof Error ? calendarError.stack : undefined,
+        timestamp: new Date().toISOString(),
+      });
+
       await insertNotification({
         title: `Calendar sync failed - quote ${quoteId}`,
         message: `Failed to sync booking to Google Calendar for quote ${quoteId}. ${
