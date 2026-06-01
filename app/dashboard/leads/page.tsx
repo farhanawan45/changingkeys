@@ -26,12 +26,6 @@ export default function LeadsPage() {
   }
 
   async function deleteLead(id: string) {
-    const confirmed = confirm(
-      "Are you sure you want to delete this lead? Related quotes and bookings will also be deleted."
-    );
-
-    if (!confirmed) return;
-
     setDeletingId(id);
 
     try {
