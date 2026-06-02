@@ -1,3 +1,6 @@
+"use client";
+
+import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 
 function formatDate(dateString: string) {
@@ -21,13 +24,40 @@ function groupBookingsByDate(bookings: any[]) {
   }, {});
 }
 
-export default async function CalendarPage() {
-  const { data: bookings, error } = await supabase
-    .from("bookings")
-    .select(`*, leads ( customer_name, pickup_address, dropoff_address )`)
-    .order("booking_date", { ascending: true });
+export default function CalendarPage() {
+  const [bookings, setBookings] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const groupedBookings = groupBookingsByDate(bookings || []);
+  useEffect(() => {
+    async function fetchBookings() {
+      const { data, error } = await supabase
+        .from("bookings")
+        .select(`
+          *,
+          leads (
+            customer_name,
+            customer_email,
+            pickup_address,
+            dropoff_address
+          )
+        `)
+        .order("booking_date", { ascending: true });
+
+      if (error) {
+        console.error("Calendar fetch error", error);
+        setError(error.message);
+      } else {
+        setBookings(data || []);
+      }
+
+      setLoading(false);
+    }
+
+    fetchBookings();
+  }, []);
+
+  const groupedBookings = groupBookingsByDate(bookings);
   const sortedDates = Object.keys(groupedBookings).sort((a, b) => {
     if (a === "No date") return 1;
     if (b === "No date") return -1;
@@ -46,12 +76,14 @@ export default async function CalendarPage() {
       </div>
 
       <div className="mt-8 rounded-2xl border bg-white shadow-sm">
-        {error ? (
+        {loading ? (
+          <div className="p-12 text-center text-slate-600">Loading calendar bookings…</div>
+        ) : error ? (
           <div className="p-12 text-center text-red-600">
             <h2 className="text-xl font-bold">Unable to load calendar</h2>
-            <p className="mt-2 text-slate-500">{error.message}</p>
+            <p className="mt-2 text-slate-500">{error}</p>
           </div>
-        ) : bookings && bookings.length === 0 ? (
+        ) : bookings.length === 0 ? (
           <div className="p-12 text-center">
             <h2 className="text-2xl font-bold text-slate-900">No calendar bookings yet</h2>
             <p className="mt-2 text-slate-500">
@@ -85,7 +117,7 @@ export default async function CalendarPage() {
                         </p>
 
                         <p className="mt-2 text-sm text-slate-500">
-                          Booking ID: {booking.id.slice(0, 8)}
+                          Booking ID: {booking.id?.slice(0, 8)}
                         </p>
                       </div>
 
