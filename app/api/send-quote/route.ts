@@ -190,13 +190,15 @@ export async function POST(req: Request) {
       console.log("SEND_QUOTE_SMTP_TRANSPORTER_CREATED");
     } catch (smtpError) {
       const details = getEmailErrorDetails(smtpError);
+      const errorMsg =
+        typeof details === "object" && details !== null && "message" in details
+          ? (details as Record<string, unknown>).message
+          : String(smtpError);
       console.log("SEND_QUOTE_SMTP_ERROR:", details);
       return NextResponse.json(
         {
           success: false,
-          error: `SMTP configuration error: ${
-            details?.message || String(smtpError)
-          }`,
+          error: `SMTP configuration error: ${errorMsg}`,
           details,
         },
         { status: 500 }
@@ -281,13 +283,15 @@ export async function POST(req: Request) {
       console.log("SEND_QUOTE_PDF_CREATED");
     } catch (pdfError) {
       const details = getEmailErrorDetails(pdfError);
+      const errorMsg =
+        typeof details === "object" && details !== null && "message" in details
+          ? (details as Record<string, unknown>).message
+          : String(pdfError);
       console.log("SEND_QUOTE_PDF_ERROR:", details);
       return NextResponse.json(
         {
           success: false,
-          error: `PDF generation failed: ${
-            details?.message || String(pdfError)
-          }`,
+          error: `PDF generation failed: ${errorMsg}`,
           details,
         },
         { status: 500 }
@@ -384,13 +388,15 @@ export async function POST(req: Request) {
       });
     } catch (sendError) {
       const details = getEmailErrorDetails(sendError);
+      const errorMsg =
+        typeof details === "object" && details !== null && "message" in details
+          ? (details as Record<string, unknown>).message
+          : String(sendError);
       console.log("SEND_QUOTE_EMAIL_SEND_FAILURE:", details);
       return NextResponse.json(
         {
           success: false,
-          error: `Failed to send email: ${
-            details?.message || String(sendError)
-          }`,
+          error: `Failed to send email: ${errorMsg}`,
           details,
         },
         { status: 500 }
@@ -547,14 +553,16 @@ export async function POST(req: Request) {
     });
   } catch (error) {
     const details = getEmailErrorDetails(error);
+    const errorMsg =
+      typeof details === "object" && details !== null && "message" in details
+        ? (details as Record<string, unknown>).message
+        : String(error);
     console.log("SEND_QUOTE_FINAL_ERROR:", details);
 
     return NextResponse.json(
       {
         success: false,
-        error: `Internal server error: ${
-          details?.message || String(error)
-        }`,
+        error: `Internal server error: ${errorMsg}`,
         details,
       },
       { status: 500 }
