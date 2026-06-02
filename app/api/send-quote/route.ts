@@ -115,25 +115,50 @@ async function createQuotePdf({
 }
 
 export async function POST(req: Request) {
+  console.log("SEND_QUOTE_REQUEST:", {
+    timestamp: new Date().toISOString(),
+    method: req.method,
+  });
+
   try {
-    const body = await req.json();
-    console.log("SEND_QUOTE_REQUEST_BODY:", body);
+    // ============ PARSE REQUEST BODY ============
+    let body: any;
+    try {
+      body = await req.json();
+      console.log("SEND_QUOTE_PAYLOAD:", body);
+    } catch (parseError) {
+      const details = getEmailErrorDetails(parseError);
+      console.log("SEND_QUOTE_REQUEST_PARSE_ERROR:", details);
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Invalid JSON payload",
+          details,
+        },
+        { status: 400 }
+      );
+    }
 
     const { quoteId, customerEmail, customerName, quotePrice } = body;
     const emailToSend =
       typeof customerEmail === "string" ? customerEmail.trim() : "";
 
     if (!quoteId || !emailToSend || !customerName || !quotePrice) {
+      const msg =
+        "quoteId, customerEmail, customerName and quotePrice are required";
+      console.log("SEND_QUOTE_VALIDATION_ERROR:", {
+        error: msg,
+        received: {
+          quoteId: Boolean(quoteId),
+          customerEmail: Boolean(emailToSend),
+          customerName: Boolean(customerName),
+          quotePrice: Boolean(quotePrice),
+        },
+      });
       return NextResponse.json(
         {
-          error:
-            "quoteId, customerEmail, customerName and quotePrice are required",
-          received: {
-            quoteId: Boolean(quoteId),
-            customerEmail: Boolean(emailToSend),
-            customerName: Boolean(customerName),
-            quotePrice: Boolean(quotePrice),
-          },
+          success: false,
+          error: msg,
         },
         { status: 400 }
       );
@@ -141,24 +166,37 @@ export async function POST(req: Request) {
 
     // ============ STEP 1: VALIDATE SMTP CONFIG UPFRONT ============
     console.log("SEND_QUOTE_VALIDATING_SMTP_CONFIG");
+    let smtpConfig: any;
+    let transporter: any;
+
     try {
-      const smtpConfig = getSmtpConfig();
+      smtpConfig = getSmtpConfig();
       if (!smtpConfig.user || !smtpConfig.pass) {
         const errorMsg =
           "Missing SMTP email configuration. Required: SMTP_USER and SMTP_PASS, or RESEND_API_KEY.";
         console.log("SEND_QUOTE_SMTP_ERROR:", { error: errorMsg });
         return NextResponse.json(
-          { error: "Email configuration missing", details: errorMsg },
+          {
+            success: false,
+            error: errorMsg,
+          },
           { status: 500 }
         );
       }
       console.log("SEND_QUOTE_SMTP_CONFIG_OK");
+
+      // Try to create transporter to catch any initialization errors
+      transporter = createSmtpTransporter();
+      console.log("SEND_QUOTE_SMTP_TRANSPORTER_CREATED");
     } catch (smtpError) {
       const details = getEmailErrorDetails(smtpError);
       console.log("SEND_QUOTE_SMTP_ERROR:", details);
       return NextResponse.json(
         {
-          error: "Email configuration error",
+          success: false,
+          error: `SMTP configuration error: ${
+            details?.message || String(smtpError)
+          }`,
           details,
         },
         { status: 500 }
@@ -230,13 +268,31 @@ export async function POST(req: Request) {
     }
 
     // ============ STEP 3: CREATE PDF ============
-    const pdfBytes = await createQuotePdf({
-      quoteId,
-      customerName,
-      customerEmail: emailToSend,
-      quotePrice,
-      paymentLink,
-    });
+    console.log("SEND_QUOTE_CREATING_PDF");
+    let pdfBytes: Uint8Array;
+    try {
+      pdfBytes = await createQuotePdf({
+        quoteId,
+        customerName,
+        customerEmail: emailToSend,
+        quotePrice,
+        paymentLink,
+      });
+      console.log("SEND_QUOTE_PDF_CREATED");
+    } catch (pdfError) {
+      const details = getEmailErrorDetails(pdfError);
+      console.log("SEND_QUOTE_PDF_ERROR:", details);
+      return NextResponse.json(
+        {
+          success: false,
+          error: `PDF generation failed: ${
+            details?.message || String(pdfError)
+          }`,
+          details,
+        },
+        { status: 500 }
+      );
+    }
 
     // ============ STEP 4: BUILD EMAIL HTML (WITH OR WITHOUT PAYMENT LINK) ============
     const paymentSectionHtml = paymentLink
@@ -302,32 +358,46 @@ export async function POST(req: Request) {
     `;
 
     // ============ STEP 5: SEND EMAIL ============
-    const smtpConfig = getSmtpConfig();
-    const transporter = createSmtpTransporter();
-
     console.log("SEND_QUOTE_SENDING_EMAIL");
-    const emailResult = await transporter.sendMail({
-      from: smtpConfig.from,
-      to: emailToSend,
-      subject: "Your Removal Quote - Changing Keys",
-      html: emailHtml,
-      attachments: [
+    let emailResult: any;
+    try {
+      emailResult = await transporter.sendMail({
+        from: smtpConfig.from,
+        to: emailToSend,
+        subject: "Your Removal Quote - Changing Keys",
+        html: emailHtml,
+        attachments: [
+          {
+            filename: `changing-keys-quote-${quoteId.slice(0, 8)}.pdf`,
+            content: Buffer.from(pdfBytes),
+            contentType: "application/pdf",
+          },
+        ],
+      });
+
+      console.log("SMTP QUOTE EMAIL SENT:", {
+        messageId: emailResult.messageId,
+        accepted: emailResult.accepted,
+        rejected: emailResult.rejected,
+        response: emailResult.response,
+        timestamp: new Date().toISOString(),
+      });
+    } catch (sendError) {
+      const details = getEmailErrorDetails(sendError);
+      console.log("SEND_QUOTE_EMAIL_SEND_FAILURE:", details);
+      return NextResponse.json(
         {
-          filename: `changing-keys-quote-${quoteId.slice(0, 8)}.pdf`,
-          content: Buffer.from(pdfBytes),
-          contentType: "application/pdf",
+          success: false,
+          error: `Failed to send email: ${
+            details?.message || String(sendError)
+          }`,
+          details,
         },
-      ],
-    });
+        { status: 500 }
+      );
+    }
 
-    console.log("SMTP QUOTE EMAIL SENT:", {
-      messageId: emailResult.messageId,
-      accepted: emailResult.accepted,
-      rejected: emailResult.rejected,
-      response: emailResult.response,
-      timestamp: new Date().toISOString(),
-    });
-
+    // ============ CHECK EMAIL DELIVERY ============
     const emailAccepted = isSmtpSendSuccessful(emailResult);
     console.log("SMTP QUOTE EMAIL DELIVERY CHECK:", {
       emailAccepted,
@@ -346,10 +416,13 @@ export async function POST(req: Request) {
           }`
         )
       );
-      console.log("SEND_QUOTE_SMTP_ERROR:", details);
+      console.log("SEND_QUOTE_EMAIL_NOT_ACCEPTED:", details);
       return NextResponse.json(
         {
-          error: "Failed to send email",
+          success: false,
+          error: `Email not accepted by mail server: ${JSON.stringify(
+            emailResult.rejected
+          )}`,
           details,
         },
         { status: 500 }
@@ -363,81 +436,90 @@ export async function POST(req: Request) {
       timestamp: new Date().toISOString(),
     });
 
-    console.log("LOOKING UP QUOTE FROM DATABASE...");
-    const { data: quote, error: quoteError } = await supabase
-      .from("quotes")
-      .select("lead_id")
-      .eq("id", quoteId)
-      .single();
+    try {
+      console.log("LOOKING UP QUOTE FROM DATABASE...");
+      const { data: quote, error: quoteError } = await supabase
+        .from("quotes")
+        .select("lead_id")
+        .eq("id", quoteId)
+        .single();
 
-    console.log("QUOTE LOOKUP RESULT:", {
-      quoteId,
-      quoteFound: !!quote,
-      leadId: quote?.lead_id,
-      quoteError,
-      timestamp: new Date().toISOString(),
-    });
-
-    if (!quote) {
-      console.log("QUOTE LOOKUP FAILED - CANNOT CREATE REMINDERS:", {
+      console.log("QUOTE LOOKUP RESULT:", {
         quoteId,
-        error: quoteError,
-        timestamp: new Date().toISOString(),
-      });
-    } else {
-      console.log("QUOTE LOOKUP SUCCEEDED - CREATING REMINDERS:", {
-        quoteId,
-        leadId: quote.lead_id,
+        quoteFound: !!quote,
+        leadId: quote?.lead_id,
+        quoteError,
         timestamp: new Date().toISOString(),
       });
 
-      console.log("CALLING createQuoteFollowupReminders...");
-      const startTime = Date.now();
-      const reminderResult = await createQuoteFollowupReminders(
-        quoteId,
-        quote.lead_id
-      );
-      const elapsed = Date.now() - startTime;
-
-      console.log("createQuoteFollowupReminders RETURNED:", {
-        quoteId,
-        success: reminderResult,
-        elapsedMs: elapsed,
-        timestamp: new Date().toISOString(),
-      });
-
-      // Immediately verify reminders were created
-      console.log("VERIFYING REMINDERS IN DATABASE...");
-      const { data: verifyReminders, error: verifyError } = await supabase
-        .from("reminders")
-        .select("id, type, status, scheduled_for, quote_id, lead_id")
-        .eq("quote_id", quoteId);
-
-      console.log("========== REMINDER VERIFICATION AFTER INSERT ==========");
-      console.log("REMINDER VERIFICATION AFTER INSERT:", {
-        quoteId,
-        remindersFound: verifyReminders?.length || 0,
-        reminders: verifyReminders,
-        verifyError,
-        timestamp: new Date().toISOString(),
-      });
-
-      if (!verifyReminders || verifyReminders.length === 0) {
-        console.log("WARNING: NO REMINDERS FOUND AFTER INSERT ATTEMPT");
-        console.log("DIAGNOSTIC INFO:", {
+      if (!quote) {
+        console.log("QUOTE LOOKUP FAILED - CANNOT CREATE REMINDERS:", {
+          quoteId,
+          error: quoteError,
+          timestamp: new Date().toISOString(),
+        });
+      } else {
+        console.log("QUOTE LOOKUP SUCCEEDED - CREATING REMINDERS:", {
           quoteId,
           leadId: quote.lead_id,
-          insertFunctionReturned: reminderResult,
-          databaseVerificationFound: 0,
-          possibleCauses: [
-            "RLS policy blocking inserts",
-            "Authentication issue",
-            "Column name mismatch",
-            "Insert was silently rolled back",
-            "Function did not actually call insert",
-          ],
+          timestamp: new Date().toISOString(),
         });
+
+        console.log("CALLING createQuoteFollowupReminders...");
+        const startTime = Date.now();
+        const reminderResult = await createQuoteFollowupReminders(
+          quoteId,
+          quote.lead_id
+        );
+        const elapsed = Date.now() - startTime;
+
+        console.log("createQuoteFollowupReminders RETURNED:", {
+          quoteId,
+          success: reminderResult,
+          elapsedMs: elapsed,
+          timestamp: new Date().toISOString(),
+        });
+
+        // Immediately verify reminders were created
+        console.log("VERIFYING REMINDERS IN DATABASE...");
+        const { data: verifyReminders, error: verifyError } = await supabase
+          .from("reminders")
+          .select("id, type, status, scheduled_for, quote_id, lead_id")
+          .eq("quote_id", quoteId);
+
+        console.log("========== REMINDER VERIFICATION AFTER INSERT ==========");
+        console.log("REMINDER VERIFICATION AFTER INSERT:", {
+          quoteId,
+          remindersFound: verifyReminders?.length || 0,
+          reminders: verifyReminders,
+          verifyError,
+          timestamp: new Date().toISOString(),
+        });
+
+        if (!verifyReminders || verifyReminders.length === 0) {
+          console.log("WARNING: NO REMINDERS FOUND AFTER INSERT ATTEMPT");
+          console.log("DIAGNOSTIC INFO:", {
+            quoteId,
+            leadId: quote.lead_id,
+            insertFunctionReturned: reminderResult,
+            databaseVerificationFound: 0,
+            possibleCauses: [
+              "RLS policy blocking inserts",
+              "Authentication issue",
+              "Column name mismatch",
+              "Insert was silently rolled back",
+              "Function did not actually call insert",
+            ],
+          });
+        }
       }
+    } catch (reminderError) {
+      const details = getEmailErrorDetails(reminderError);
+      console.log("SEND_QUOTE_REMINDER_ERROR:", details);
+      // Non-blocking: log but don't fail the response
+      console.log(
+        "Reminder creation failed but email was sent successfully. Continuing."
+      );
     }
 
     console.log("========== REMINDER CREATION FLOW COMPLETE ==========");
@@ -448,11 +530,12 @@ export async function POST(req: Request) {
       customerEmail: emailToSend,
       messageId: emailResult.messageId,
       paymentLinkGenerated: !!paymentLink,
-      stripeError: stripeError ? "Yes" : "No",
+      stripeErrorOccurred: !!stripeError,
       timestamp: new Date().toISOString(),
     });
 
     return NextResponse.json({
+      success: true,
       message: "Quote email sent successfully",
       data: {
         messageId: emailResult.messageId,
@@ -464,12 +547,14 @@ export async function POST(req: Request) {
     });
   } catch (error) {
     const details = getEmailErrorDetails(error);
-    console.log("SEND_QUOTE_SMTP_ERROR:", details);
-    console.log("SEND_QUOTE_API_ERROR:", details);
+    console.log("SEND_QUOTE_FINAL_ERROR:", details);
 
     return NextResponse.json(
       {
-        error: "Failed to send email",
+        success: false,
+        error: `Internal server error: ${
+          details?.message || String(error)
+        }`,
         details,
       },
       { status: 500 }
