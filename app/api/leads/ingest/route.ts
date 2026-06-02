@@ -35,7 +35,7 @@ export async function POST(req: Request) {
       const emailPrefix = customerEmail.split("@")[0];
       derivedCustomerName = emailPrefix
         .split(/[._-]/)
-        .map(part => part.charAt(0).toUpperCase() + part.slice(1))
+        .map((part: string) => part.charAt(0).toUpperCase() + part.slice(1))
         .join(" ");
       console.log("LEAD INGEST NAME DERIVED FROM EMAIL", {
         customerEmail,
