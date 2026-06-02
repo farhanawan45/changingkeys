@@ -11,16 +11,67 @@ export async function POST(req: Request) {
     });
 
     const {
-      customerName,
-      customerEmail,
-      customerPhone,
-      pickupAddress,
-      dropoffAddress,
-      movingDate,
-      estimatedHours,
-      distanceMiles,
-      itemsCount,
+      customerName: rawCustomerName,
+      customerEmail: rawCustomerEmail,
+      customerPhone: rawCustomerPhone,
+      pickupAddress: rawPickupAddress,
+      dropoffAddress: rawDropoffAddress,
+      movingDate: rawMovingDate,
+      estimatedHours: rawEstimatedHours,
+      distanceMiles: rawDistanceMiles,
+      itemsCount: rawItemsCount,
+      customer_name: rawCustomerNameSnake,
+      customer_email: rawCustomerEmailSnake,
+      customer_phone: rawCustomerPhoneSnake,
+      pickup_address: rawPickupAddressSnake,
+      dropoff_address: rawDropoffAddressSnake,
+      moving_date: rawMovingDateSnake,
+      estimated_hours: rawEstimatedHoursSnake,
+      distance_miles: rawDistanceMilesSnake,
+      items_count: rawItemsCountSnake,
     } = body;
+
+    const customerName =
+      typeof rawCustomerName === "string" && rawCustomerName.trim().length > 0
+        ? rawCustomerName.trim()
+        : typeof rawCustomerNameSnake === "string"
+        ? rawCustomerNameSnake.trim()
+        : "";
+    const customerEmail =
+      typeof rawCustomerEmail === "string" && rawCustomerEmail.trim().length > 0
+        ? rawCustomerEmail.trim()
+        : typeof rawCustomerEmailSnake === "string"
+        ? rawCustomerEmailSnake.trim()
+        : "";
+    const customerPhone =
+      typeof rawCustomerPhone === "string" && rawCustomerPhone.trim().length > 0
+        ? rawCustomerPhone.trim()
+        : typeof rawCustomerPhoneSnake === "string"
+        ? rawCustomerPhoneSnake.trim()
+        : "";
+    const pickupAddress =
+      typeof rawPickupAddress === "string" && rawPickupAddress.trim().length > 0
+        ? rawPickupAddress.trim()
+        : typeof rawPickupAddressSnake === "string"
+        ? rawPickupAddressSnake.trim()
+        : "";
+    const dropoffAddress =
+      typeof rawDropoffAddress === "string" && rawDropoffAddress.trim().length > 0
+        ? rawDropoffAddress.trim()
+        : typeof rawDropoffAddressSnake === "string"
+        ? rawDropoffAddressSnake.trim()
+        : "";
+    const movingDate =
+      typeof rawMovingDate === "string" && rawMovingDate.trim().length > 0
+        ? rawMovingDate.trim()
+        : typeof rawMovingDateSnake === "string"
+        ? rawMovingDateSnake.trim()
+        : "";
+    const estimatedHours =
+      rawEstimatedHours ?? rawEstimatedHoursSnake ?? null;
+    const distanceMiles =
+      rawDistanceMiles ?? rawDistanceMilesSnake ?? null;
+    const itemsCount = rawItemsCount ?? rawItemsCountSnake ?? null;
 
     console.log("LEAD INGEST CUSTOMER NAME", {
       customerName,
