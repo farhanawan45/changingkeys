@@ -12,7 +12,7 @@ function formatDate(dateString: string) {
 
 function groupBookingsByDate(bookings: any[]) {
   return bookings.reduce((groups: Record<string, any[]>, booking) => {
-    const dateKey = booking.moving_date || "No date";
+    const dateKey = booking.booking_date || "No date";
     if (!groups[dateKey]) {
       groups[dateKey] = [];
     }
@@ -25,7 +25,7 @@ export default async function CalendarPage() {
   const { data: bookings, error } = await supabase
     .from("bookings")
     .select(`*, leads ( customer_name, pickup_address, dropoff_address )`)
-    .order("moving_date", { ascending: true });
+    .order("booking_date", { ascending: true });
 
   const groupedBookings = groupBookingsByDate(bookings || []);
   const sortedDates = Object.keys(groupedBookings).sort((a, b) => {
