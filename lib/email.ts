@@ -40,8 +40,11 @@ export function getSmtpConfig() {
 export function getSmtpEnvStatus() {
   return {
     hasSmtpHost: !!process.env.SMTP_HOST,
+    hasSmtpPort: !!process.env.SMTP_PORT,
+    hasSmtpSecure: !!process.env.SMTP_SECURE,
     hasSmtpUser: !!process.env.SMTP_USER,
     hasSmtpPass: !!process.env.SMTP_PASS,
+    hasQuoteFromEmail: !!process.env.QUOTE_FROM_EMAIL,
     quoteFromEmail: process.env.QUOTE_FROM_EMAIL || "Changing Keys <bookings@changingkeys.co.uk>",
   };
 }
