@@ -61,3 +61,11 @@ export const supabase = new Proxy({} as SupabaseClient, {
 export function getSupabase() {
   return getSupabaseClient();
 }
+
+export function getSupabaseEnvStatus() {
+  return {
+    hasSupabaseUrl: !!process.env.NEXT_PUBLIC_SUPABASE_URL,
+    hasSupabaseAnonKey: !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+    hasSupabaseServiceRoleKey: !!process.env.SUPABASE_SERVICE_ROLE_KEY,
+  };
+}

@@ -37,6 +37,15 @@ export function getSmtpConfig() {
   };
 }
 
+export function getSmtpEnvStatus() {
+  return {
+    hasSmtpHost: !!process.env.SMTP_HOST,
+    hasSmtpUser: !!process.env.SMTP_USER,
+    hasSmtpPass: !!process.env.SMTP_PASS,
+    quoteFromEmail: process.env.QUOTE_FROM_EMAIL || "Changing Keys <bookings@changingkeys.co.uk>",
+  };
+}
+
 export function createSmtpTransporter() {
   const config = getSmtpConfig();
 

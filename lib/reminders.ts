@@ -3,6 +3,27 @@ import { supabase } from "@/lib/supabase";
 
 export type ReminderType = "quote_followup" | "payment_pending" | "booking_reminder" | "review_request";
 
+export interface ProcessPendingRemindersResult {
+  routeHit: true;
+  currentTimeIso: string;
+  dueRemindersCount: number;
+  dueRemindersSample: Array<{
+    id: string;
+    type: string;
+    status: string;
+    scheduled_for: string | null;
+    reminder_date: string | null;
+    sent_at: string | null;
+    lead_id: string | null;
+    quote_id: string | null;
+    booking_id: string | null;
+  }>;
+  processed: number;
+  errors: number;
+  errorDetails?: unknown;
+  debug: Record<string, unknown>;
+}
+
 function addHours(date: Date, hours: number): Date {
   const result = new Date(date);
   result.setHours(result.getHours() + hours);
@@ -570,64 +591,142 @@ async function buildReviewRequestEmail(
   `;
 }
 
-export async function processPendingReminders() {
-  console.log("REMINDER QUERY START");
-
-  const selectStr = `
+export async function processPendingReminders(): Promise<ProcessPendingRemindersResult> {
+  const currentTimeIso = new Date().toISOString();
+  const directSelect = `
       id,
       type,
       status,
       scheduled_for,
+      reminder_date,
+      sent_at,
+      lead_id,
+      quote_id,
+      booking_id
+    `;
+  const dueFilter = `scheduled_for.lte.${currentTimeIso},reminder_date.lte.${currentTimeIso}`;
+
+  console.log("REMINDER QUERY START");
+  console.log("REMINDER QUERY DETAILS", {
+    table: "reminders",
+    select: directSelect.replace(/\s+/g, " ").trim(),
+    filters: { status: "pending", dueFilter },
+    currentTimeIso,
+    limit: 50,
+  });
+
+  const { data: dueReminders, error: dueFetchError } = await supabase
+    .from("reminders")
+    .select(directSelect)
+    .eq("status", "pending")
+    .or(dueFilter)
+    .limit(50);
+
+  const dueRemindersSample = dueReminders ?? [];
+  const dueRemindersCount = dueRemindersSample.length;
+
+  const debugBase: Record<string, unknown> = {
+    directQuery: {
+      select: directSelect.replace(/\s+/g, " ").trim(),
+      filters: { status: "pending", dueFilter },
+      currentTimeIso,
+      limit: 50,
+      dueFetchError: dueFetchError ? String(dueFetchError) : null,
+      dueRemindersCount,
+    },
+    dueRemindersSample,
+  };
+
+  if (dueFetchError) {
+    console.log("REMINDER DUE FETCH ERROR:", dueFetchError);
+    return {
+      routeHit: true,
+      currentTimeIso,
+      dueRemindersCount,
+      dueRemindersSample,
+      processed: 0,
+      errors: 0,
+      errorDetails: dueFetchError,
+      debug: debugBase,
+    };
+  }
+
+  if (dueRemindersCount === 0) {
+    console.log("NO DUE PENDING REMINDERS FOUND");
+    return {
+      routeHit: true,
+      currentTimeIso,
+      dueRemindersCount,
+      dueRemindersSample,
+      processed: 0,
+      errors: 0,
+      debug: debugBase,
+    };
+  }
+
+  const reminderIds = dueRemindersSample.map((reminder) => reminder.id).filter(Boolean);
+  const fullSelect = `
+      id,
+      type,
+      status,
+      scheduled_for,
+      reminder_date,
+      sent_at,
+      lead_id,
       quote_id,
       booking_id,
-      lead_id,
-      quote:quote_id(id, price, customer_email),
+      quote:quote_id(id, price, customer_email, status),
       booking:booking_id(id, quote_id),
       lead:lead_id(id, customer_name, customer_email, moving_date, pickup_address, dropoff_address)
     `;
 
-  const scheduledForIso = new Date().toISOString();
-
-  console.log("REMINDER QUERY DETAILS", {
-    table: "reminders",
-    select: selectStr.replace(/\s+/g, " ").trim(),
-    filters: { status: "pending", scheduled_for_lte: scheduledForIso },
-    limit: 50,
-  });
-
   const { data: reminders, error: fetchError } = await supabase
     .from("reminders")
-    .select(selectStr)
-    .eq("status", "pending")
-    .lte("scheduled_for", scheduledForIso)
+    .select(fullSelect)
+    .in("id", reminderIds)
     .limit(50);
 
-  console.log("REMINDER QUERY RESULT", reminders);
-  console.log("REMINDER COUNT", reminders?.length ?? 0);
+  debugBase.fullQuery = {
+    select: fullSelect.replace(/\s+/g, " ").trim(),
+    filters: { id_in: reminderIds },
+    fetchError: fetchError ? String(fetchError) : null,
+    returnedCount: reminders?.length ?? 0,
+  };
 
   if (fetchError) {
-    console.log("REMINDER FETCH ERROR:", fetchError);
-    console.log("REMINDER ERROR", fetchError);
-    return { processed: 0, errors: 0 };
+    console.log("REMINDER FULL FETCH ERROR:", fetchError);
+    return {
+      routeHit: true,
+      currentTimeIso,
+      dueRemindersCount,
+      dueRemindersSample,
+      processed: 0,
+      errors: 0,
+      errorDetails: fetchError,
+      debug: debugBase,
+    };
   }
 
   if (!reminders || reminders.length === 0) {
-    console.log("NO PENDING REMINDERS FOUND");
-    return { processed: 0, errors: 0 };
+    console.log("NO REMINDERS RETURNED FROM FULL FETCH");
+    return {
+      routeHit: true,
+      currentTimeIso,
+      dueRemindersCount,
+      dueRemindersSample,
+      processed: 0,
+      errors: 0,
+      debug: debugBase,
+    };
   }
 
   let processed = 0;
   let errors = 0;
+  const errorDetails: Array<unknown> = [];
 
   for (const reminder of reminders) {
     try {
       console.log("REMINDER PROCESSING", reminder.id);
-      console.log("REMINDER FOUND:", {
-        id: reminder.id,
-        type: reminder.type,
-        quoteId: reminder.quote_id,
-        bookingId: reminder.booking_id,
-      });
 
       let emailToSend = "";
       let subject = "";
@@ -640,6 +739,7 @@ export async function processPendingReminders() {
         if (!quote || !lead?.customer_email) {
           console.log("REMINDER EMAIL SKIPPED: missing quote or email");
           errors++;
+          errorDetails.push({ id: reminder.id, reason: "missing quote or email" });
           continue;
         }
 
@@ -653,6 +753,7 @@ export async function processPendingReminders() {
         if (!quote || !lead?.customer_email) {
           console.log("REMINDER EMAIL SKIPPED: missing quote or email");
           errors++;
+          errorDetails.push({ id: reminder.id, reason: "missing quote or email" });
           continue;
         }
 
@@ -669,12 +770,12 @@ export async function processPendingReminders() {
         subject = "Payment Reminder - Your Changing Keys Quote";
         htmlBody = await buildPaymentPendingEmail(lead.customer_name, quote.price);
       } else if (reminder.type === "booking_reminder") {
-        const booking = reminder.booking as any;
         const lead = reminder.lead as any;
 
         if (!lead?.customer_email || !lead?.moving_date) {
           console.log("REMINDER EMAIL SKIPPED: missing email or moving date");
           errors++;
+          errorDetails.push({ id: reminder.id, reason: "missing email or moving date" });
           continue;
         }
 
@@ -692,6 +793,7 @@ export async function processPendingReminders() {
         if (!lead?.customer_email) {
           console.log("REMINDER EMAIL SKIPPED: missing email");
           errors++;
+          errorDetails.push({ id: reminder.id, reason: "missing email" });
           continue;
         }
 
@@ -703,6 +805,7 @@ export async function processPendingReminders() {
       if (!emailToSend) {
         console.log("REMINDER EMAIL SKIPPED: no valid email found");
         errors++;
+        errorDetails.push({ id: reminder.id, reason: "no valid email found" });
         continue;
       }
 
@@ -718,11 +821,12 @@ export async function processPendingReminders() {
         html: htmlBody,
       });
 
-      console.log("REMINDER EMAIL SENT:", {
+      console.log("REMINDER EMAIL SENT", reminder.id);
+      console.log("REMINDER EMAIL SENT RESULT:", {
         messageId: emailResult.messageId,
         accepted: emailResult.accepted,
+        rejected: emailResult.rejected,
       });
-      console.log("REMINDER EMAIL SENT", reminder.id);
 
       const { error: updateError } = await supabase
         .from("reminders")
@@ -735,6 +839,7 @@ export async function processPendingReminders() {
       if (updateError) {
         console.log("REMINDER UPDATE ERROR:", updateError);
         errors++;
+        errorDetails.push({ id: reminder.id, updateError });
       } else {
         processed++;
       }
@@ -742,8 +847,18 @@ export async function processPendingReminders() {
       console.log("REMINDER EMAIL ERROR:", getEmailErrorDetails(error));
       console.log("REMINDER ERROR", error);
       errors++;
+      errorDetails.push({ id: reminder.id, error: getEmailErrorDetails(error) });
     }
   }
 
-  return { processed, errors };
+  return {
+    routeHit: true,
+    currentTimeIso,
+    dueRemindersCount,
+    dueRemindersSample: dueRemindersSample.slice(0, 10),
+    processed,
+    errors,
+    errorDetails: errorDetails.length > 0 ? errorDetails : undefined,
+    debug: debugBase,
+  };
 }
