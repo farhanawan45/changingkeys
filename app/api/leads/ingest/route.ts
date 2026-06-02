@@ -45,6 +45,13 @@ export async function POST(req: Request) {
       });
     }
 
+    console.log("LEAD INGEST FINAL CUSTOMER NAME", {
+      inputCustomerName: customerName,
+      derivedCustomerName,
+      finalCustomerName: derivedCustomerName || "",
+      timestamp: new Date().toISOString(),
+    });
+
     if (!derivedCustomerName && !customerEmail && !customerPhone) {
       return NextResponse.json(
         { error: "Customer name, email or phone is required" },
