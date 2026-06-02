@@ -21,7 +21,7 @@ export async function POST(req: Request) {
       routeHit: true,
       debugRequested: debug,
       envCheck: envStatus,
-      ...result,
+      result,
     });
   } catch (error) {
     console.log("REMINDER PROCESSING ERROR:", error);
