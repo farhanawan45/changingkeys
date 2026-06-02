@@ -5,6 +5,11 @@ export async function POST(req: Request) {
   try {
     const body = await req.json();
 
+    console.log("LEAD INGEST RAW BODY", {
+      body,
+      timestamp: new Date().toISOString(),
+    });
+
     const {
       customerName,
       customerEmail,
@@ -17,7 +22,30 @@ export async function POST(req: Request) {
       itemsCount,
     } = body;
 
-    if (!customerName && !customerEmail && !customerPhone) {
+    console.log("LEAD INGEST CUSTOMER NAME", {
+      customerName,
+      customerEmail,
+      customerPhone,
+      timestamp: new Date().toISOString(),
+    });
+
+    // Extract name from email prefix if customerName is missing
+    let derivedCustomerName = customerName;
+    if (!derivedCustomerName && customerEmail) {
+      const emailPrefix = customerEmail.split("@")[0];
+      derivedCustomerName = emailPrefix
+        .split(/[._-]/)
+        .map(part => part.charAt(0).toUpperCase() + part.slice(1))
+        .join(" ");
+      console.log("LEAD INGEST NAME DERIVED FROM EMAIL", {
+        customerEmail,
+        emailPrefix,
+        derivedCustomerName,
+        timestamp: new Date().toISOString(),
+      });
+    }
+
+    if (!derivedCustomerName && !customerEmail && !customerPhone) {
       return NextResponse.json(
         { error: "Customer name, email or phone is required" },
         { status: 400 }
@@ -51,7 +79,7 @@ export async function POST(req: Request) {
     });
 
     const leadInsertData = {
-      customer_name: customerName || "",
+      customer_name: derivedCustomerName || "",
       customer_email: customerEmail || "",
       customer_phone: customerPhone || "",
       pickup_address: pickupAddress || "",
@@ -63,7 +91,7 @@ export async function POST(req: Request) {
       status: "new",
     };
 
-    console.log("LEAD CREATE INSERT DATA", {
+    console.log("LEAD INSERT DATA", {
       leadInsertData,
       timestamp: new Date().toISOString(),
     });
