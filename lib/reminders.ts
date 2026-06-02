@@ -664,59 +664,38 @@ export async function processPendingReminders(): Promise<ProcessPendingReminders
     };
   }
 
-  const reminderIds = dueRemindersSample.map((reminder) => reminder.id).filter(Boolean);
-  const fullSelect = `
-      id,
-      type,
-      status,
-      scheduled_for,
-      reminder_date,
-      sent_at,
-      lead_id,
-      quote_id,
-      booking_id,
-      quote:quote_id(id, price, customer_email, status),
-      booking:booking_id(id, quote_id),
-      lead:lead_id(id, customer_name, customer_email, moving_date, pickup_address, dropoff_address)
-    `;
+  const smtpConfig = getSmtpConfig();
+  const isSmtpMissing = !process.env.SMTP_HOST || !process.env.SMTP_PORT || !process.env.SMTP_SECURE || !process.env.SMTP_USER || !process.env.SMTP_PASS || !process.env.QUOTE_FROM_EMAIL;
 
-  const { data: reminders, error: fetchError } = await supabase
-    .from("reminders")
-    .select(fullSelect)
-    .in("id", reminderIds)
-    .limit(50);
+  if (isSmtpMissing) {
+    console.log("SMTP CONFIG MISSING", {
+      hasSmtpHost: !!process.env.SMTP_HOST,
+      hasSmtpPort: !!process.env.SMTP_PORT,
+      hasSmtpSecure: !!process.env.SMTP_SECURE,
+      hasSmtpUser: !!process.env.SMTP_USER,
+      hasSmtpPass: !!process.env.SMTP_PASS,
+      hasQuoteFromEmail: !!process.env.QUOTE_FROM_EMAIL,
+    });
 
-  debugBase.fullQuery = {
-    select: fullSelect.replace(/\s+/g, " ").trim(),
-    filters: { id_in: reminderIds },
-    fetchError: fetchError ? String(fetchError) : null,
-    returnedCount: reminders?.length ?? 0,
-  };
-
-  if (fetchError) {
-    console.log("REMINDER FULL FETCH ERROR:", fetchError);
     return {
       routeHit: true,
       currentTimeIso,
       dueRemindersCount,
       dueRemindersSample,
       processed: 0,
-      errors: 0,
-      errorDetails: fetchError,
-      debug: debugBase,
-    };
-  }
-
-  if (!reminders || reminders.length === 0) {
-    console.log("NO REMINDERS RETURNED FROM FULL FETCH");
-    return {
-      routeHit: true,
-      currentTimeIso,
-      dueRemindersCount,
-      dueRemindersSample,
-      processed: 0,
-      errors: 0,
-      debug: debugBase,
+      errors: 1,
+      errorDetails: "SMTP_CONFIG_MISSING",
+      debug: {
+        ...debugBase,
+        smtpStatus: {
+          hasSmtpHost: !!process.env.SMTP_HOST,
+          hasSmtpPort: !!process.env.SMTP_PORT,
+          hasSmtpSecure: !!process.env.SMTP_SECURE,
+          hasSmtpUser: !!process.env.SMTP_USER,
+          hasSmtpPass: !!process.env.SMTP_PASS,
+          hasQuoteFromEmail: !!process.env.QUOTE_FROM_EMAIL,
+        },
+      },
     };
   }
 
@@ -724,18 +703,52 @@ export async function processPendingReminders(): Promise<ProcessPendingReminders
   let errors = 0;
   const errorDetails: Array<unknown> = [];
 
-  for (const reminder of reminders) {
+  for (const reminder of dueRemindersSample) {
     try {
       console.log("REMINDER PROCESSING", reminder.id);
+
+      const leadPromise = reminder.lead_id
+        ? supabase.from("leads").select("*").eq("id", reminder.lead_id).single()
+        : Promise.resolve({ data: null, error: null } as any);
+      const quotePromise = reminder.quote_id
+        ? supabase.from("quotes").select("*").eq("id", reminder.quote_id).single()
+        : Promise.resolve({ data: null, error: null } as any);
+      const bookingPromise = reminder.booking_id
+        ? supabase.from("bookings").select("*").eq("id", reminder.booking_id).single()
+        : Promise.resolve({ data: null, error: null } as any);
+
+      const [leadResult, quoteResult, bookingResult] = await Promise.all([leadPromise, quotePromise, bookingPromise]);
+
+      const lead = leadResult.data as any;
+      const quote = quoteResult.data as any;
+      const booking = bookingResult.data as any;
+
+      if (leadResult.error) {
+        console.log("REMINDER LEAD FETCH ERROR", leadResult.error);
+        errors++;
+        errorDetails.push({ id: reminder.id, reason: "lead_fetch_failed", details: leadResult.error });
+        continue;
+      }
+
+      if (quoteResult.error) {
+        console.log("REMINDER QUOTE FETCH ERROR", quoteResult.error);
+        errors++;
+        errorDetails.push({ id: reminder.id, reason: "quote_fetch_failed", details: quoteResult.error });
+        continue;
+      }
+
+      if (bookingResult.error) {
+        console.log("REMINDER BOOKING FETCH ERROR", bookingResult.error);
+        errors++;
+        errorDetails.push({ id: reminder.id, reason: "booking_fetch_failed", details: bookingResult.error });
+        continue;
+      }
 
       let emailToSend = "";
       let subject = "";
       let htmlBody = "";
 
       if (reminder.type === "quote_followup") {
-        const quote = reminder.quote as any;
-        const lead = reminder.lead as any;
-
         if (!quote || !lead?.customer_email) {
           console.log("REMINDER EMAIL SKIPPED: missing quote or email");
           errors++;
@@ -747,9 +760,6 @@ export async function processPendingReminders(): Promise<ProcessPendingReminders
         subject = "Reminder: Your Changing Keys Quote";
         htmlBody = await buildQuoteFollowupEmail(lead.customer_name, quote.price);
       } else if (reminder.type === "payment_pending") {
-        const quote = reminder.quote as any;
-        const lead = reminder.lead as any;
-
         if (!quote || !lead?.customer_email) {
           console.log("REMINDER EMAIL SKIPPED: missing quote or email");
           errors++;
@@ -770,8 +780,6 @@ export async function processPendingReminders(): Promise<ProcessPendingReminders
         subject = "Payment Reminder - Your Changing Keys Quote";
         htmlBody = await buildPaymentPendingEmail(lead.customer_name, quote.price);
       } else if (reminder.type === "booking_reminder") {
-        const lead = reminder.lead as any;
-
         if (!lead?.customer_email || !lead?.moving_date) {
           console.log("REMINDER EMAIL SKIPPED: missing email or moving date");
           errors++;
@@ -788,8 +796,6 @@ export async function processPendingReminders(): Promise<ProcessPendingReminders
           lead.dropoff_address
         );
       } else if (reminder.type === "review_request") {
-        const lead = reminder.lead as any;
-
         if (!lead?.customer_email) {
           console.log("REMINDER EMAIL SKIPPED: missing email");
           errors++;
@@ -811,7 +817,6 @@ export async function processPendingReminders(): Promise<ProcessPendingReminders
 
       console.log("REMINDER EMAIL TO:", emailToSend);
 
-      const smtpConfig = getSmtpConfig();
       const transporter = createSmtpTransporter();
 
       const emailResult = await transporter.sendMail({
