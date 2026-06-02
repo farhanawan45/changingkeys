@@ -23,7 +23,18 @@ function getSupabaseAnonKey() {
 }
 
 function createSupabaseClient() {
-  return createClient(getSupabaseUrl(), getSupabaseAnonKey());
+  // Prefer the service role key for server-side operations when available.
+  // Falls back to the public anon key when the service role key is not set.
+  const serviceRole = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const key = serviceRole || getSupabaseAnonKey();
+
+  if (serviceRole) {
+    console.log("Supabase: initializing client with service role key (server)");
+  } else {
+    console.log("Supabase: initializing client with anon/public key (fallback)");
+  }
+
+  return createClient(getSupabaseUrl(), key);
 }
 
 function getSupabaseClient() {

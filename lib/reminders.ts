@@ -571,10 +571,9 @@ async function buildReviewRequestEmail(
 }
 
 export async function processPendingReminders() {
-  const { data: reminders, error: fetchError } = await supabase
-    .from("reminders")
-    .select(
-      `
+  console.log("REMINDER QUERY START");
+
+  const selectStr = `
       id,
       type,
       status,
@@ -585,14 +584,30 @@ export async function processPendingReminders() {
       quote:quote_id(id, price, customer_email),
       booking:booking_id(id, quote_id),
       lead:lead_id(id, customer_name, customer_email, moving_date, pickup_address, dropoff_address)
-    `
-    )
+    `;
+
+  const scheduledForIso = new Date().toISOString();
+
+  console.log("REMINDER QUERY DETAILS", {
+    table: "reminders",
+    select: selectStr.replace(/\s+/g, " ").trim(),
+    filters: { status: "pending", scheduled_for_lte: scheduledForIso },
+    limit: 50,
+  });
+
+  const { data: reminders, error: fetchError } = await supabase
+    .from("reminders")
+    .select(selectStr)
     .eq("status", "pending")
-    .lte("scheduled_for", new Date().toISOString())
+    .lte("scheduled_for", scheduledForIso)
     .limit(50);
+
+  console.log("REMINDER QUERY RESULT", reminders);
+  console.log("REMINDER COUNT", reminders?.length ?? 0);
 
   if (fetchError) {
     console.log("REMINDER FETCH ERROR:", fetchError);
+    console.log("REMINDER ERROR", fetchError);
     return { processed: 0, errors: 0 };
   }
 
@@ -606,6 +621,7 @@ export async function processPendingReminders() {
 
   for (const reminder of reminders) {
     try {
+      console.log("REMINDER PROCESSING", reminder.id);
       console.log("REMINDER FOUND:", {
         id: reminder.id,
         type: reminder.type,
@@ -706,6 +722,7 @@ export async function processPendingReminders() {
         messageId: emailResult.messageId,
         accepted: emailResult.accepted,
       });
+      console.log("REMINDER EMAIL SENT", reminder.id);
 
       const { error: updateError } = await supabase
         .from("reminders")
@@ -723,6 +740,7 @@ export async function processPendingReminders() {
       }
     } catch (error) {
       console.log("REMINDER EMAIL ERROR:", getEmailErrorDetails(error));
+      console.log("REMINDER ERROR", error);
       errors++;
     }
   }
