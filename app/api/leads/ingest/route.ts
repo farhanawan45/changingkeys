@@ -29,16 +29,18 @@ export async function POST(req: Request) {
       timestamp: new Date().toISOString(),
     });
 
+    const normalizedEmail = customerEmail?.trim().toLowerCase() || "";
+
     // Extract name from email prefix if customerName is missing
     let derivedCustomerName = customerName;
-    if (!derivedCustomerName && customerEmail) {
-      const emailPrefix = customerEmail.split("@")[0];
+    if (!derivedCustomerName && normalizedEmail) {
+      const emailPrefix = normalizedEmail.split("@")[0];
       derivedCustomerName = emailPrefix
         .split(/[._-]/)
         .map((part: string) => part.charAt(0).toUpperCase() + part.slice(1))
         .join(" ");
       console.log("LEAD INGEST NAME DERIVED FROM EMAIL", {
-        customerEmail,
+        normalizedEmail,
         emailPrefix,
         derivedCustomerName,
         timestamp: new Date().toISOString(),
@@ -52,21 +54,76 @@ export async function POST(req: Request) {
       timestamp: new Date().toISOString(),
     });
 
-    if (!derivedCustomerName && !customerEmail && !customerPhone) {
+    if (!derivedCustomerName && !normalizedEmail && !customerPhone) {
       return NextResponse.json(
         { error: "Customer name, email or phone is required" },
         { status: 400 }
       );
     }
 
-    if (customerEmail) {
-      const { data: existingLead } = await supabase
+    if (normalizedEmail) {
+      const { data: existingLead, error: existingLeadError } = await supabase
         .from("leads")
         .select("*")
-        .eq("customer_email", customerEmail)
+        .eq("customer_email", normalizedEmail)
         .maybeSingle();
 
+      if (existingLeadError) {
+        console.log("LEAD INGEST EXISTING LEAD QUERY ERROR", {
+          existingLeadError,
+          timestamp: new Date().toISOString(),
+        });
+      }
+
       if (existingLead) {
+        const updateData: Record<string, any> = {};
+
+        if (
+          derivedCustomerName &&
+          derivedCustomerName !== existingLead.customer_name
+        ) {
+          updateData.customer_name = derivedCustomerName;
+        }
+
+        if (customerPhone && customerPhone !== existingLead.customer_phone) {
+          updateData.customer_phone = customerPhone;
+        }
+
+        if (pickupAddress && pickupAddress !== existingLead.pickup_address) {
+          updateData.pickup_address = pickupAddress;
+        }
+
+        if (dropoffAddress && dropoffAddress !== existingLead.dropoff_address) {
+          updateData.dropoff_address = dropoffAddress;
+        }
+
+        if (movingDate && movingDate !== existingLead.moving_date) {
+          updateData.moving_date = movingDate;
+        }
+
+        if (Object.keys(updateData).length > 0) {
+          const { data: updatedLead, error: updateError } = await supabase
+            .from("leads")
+            .update(updateData)
+            .eq("id", existingLead.id)
+            .select()
+            .single();
+
+          if (updateError) {
+            console.log("LEAD INGEST DUPLICATE UPDATE ERROR", {
+              updateError,
+              leadId: existingLead.id,
+              updateData,
+              timestamp: new Date().toISOString(),
+            });
+          } else {
+            return NextResponse.json({
+              message: "Lead already exists and was updated",
+              lead: updatedLead,
+            });
+          }
+        }
+
         return NextResponse.json({
           message: "Lead already exists",
           lead: existingLead,
@@ -87,7 +144,7 @@ export async function POST(req: Request) {
 
     const leadInsertData = {
       customer_name: derivedCustomerName || "",
-      customer_email: customerEmail || "",
+      customer_email: normalizedEmail || "",
       customer_phone: customerPhone || "",
       pickup_address: pickupAddress || "",
       dropoff_address: dropoffAddress || "",
