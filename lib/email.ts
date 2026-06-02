@@ -20,11 +20,12 @@ export function isSmtpSendSuccessful(result: nodemailer.SentMessageInfo) {
 }
 
 export function getSmtpConfig() {
-  const host = process.env.SMTP_HOST || "smtp.gmail.com";
+  const useResendSmtp = !!process.env.RESEND_API_KEY;
+  const host = process.env.SMTP_HOST || (useResendSmtp ? "smtp.resend.com" : "smtp.gmail.com");
   const port = Number(process.env.SMTP_PORT || 465);
-  const secure = (process.env.SMTP_SECURE || "true") === "true";
-  const user = process.env.SMTP_USER;
-  const pass = process.env.SMTP_PASS;
+  const secure = (process.env.SMTP_SECURE ?? "true") === "true";
+  const user = process.env.SMTP_USER || (useResendSmtp ? "api" : undefined);
+  const pass = process.env.SMTP_PASS || (useResendSmtp ? process.env.RESEND_API_KEY : undefined);
   const from = process.env.QUOTE_FROM_EMAIL || "Changing Keys <bookings@changingkeys.co.uk>";
 
   return {
@@ -34,18 +35,25 @@ export function getSmtpConfig() {
     user,
     pass,
     from,
+    useResendSmtp,
   };
 }
 
 export function getSmtpEnvStatus() {
+  const hasResendApiKey = !!process.env.RESEND_API_KEY;
+  const hasSmtpUser = !!process.env.SMTP_USER || hasResendApiKey;
+  const hasSmtpPass = !!process.env.SMTP_PASS || hasResendApiKey;
+
   return {
-    hasSmtpHost: !!process.env.SMTP_HOST,
-    hasSmtpPort: !!process.env.SMTP_PORT,
-    hasSmtpSecure: !!process.env.SMTP_SECURE,
-    hasSmtpUser: !!process.env.SMTP_USER,
-    hasSmtpPass: !!process.env.SMTP_PASS,
+    hasSmtpHost: !!process.env.SMTP_HOST || hasResendApiKey,
+    hasSmtpPort: !!process.env.SMTP_PORT || hasResendApiKey,
+    hasSmtpSecure: !!process.env.SMTP_SECURE || hasResendApiKey,
+    hasSmtpUser,
+    hasSmtpPass,
+    hasResendApiKey,
     hasQuoteFromEmail: !!process.env.QUOTE_FROM_EMAIL,
     quoteFromEmail: process.env.QUOTE_FROM_EMAIL || "Changing Keys <bookings@changingkeys.co.uk>",
+    smtpProvider: process.env.SMTP_HOST ? "custom" : hasResendApiKey ? "resend" : "gmail_default",
   };
 }
 
@@ -54,7 +62,7 @@ export function createSmtpTransporter() {
 
   if (!config.user || !config.pass) {
     throw new Error(
-      "Missing SMTP email configuration. Required: SMTP_USER and SMTP_PASS."
+      "Missing SMTP email configuration. Required: SMTP_USER and SMTP_PASS, or RESEND_API_KEY for Resend SMTP."
     );
   }
 

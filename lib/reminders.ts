@@ -665,16 +665,20 @@ export async function processPendingReminders(): Promise<ProcessPendingReminders
   }
 
   const smtpConfig = getSmtpConfig();
-  const isSmtpMissing = !process.env.SMTP_HOST || !process.env.SMTP_PORT || !process.env.SMTP_SECURE || !process.env.SMTP_USER || !process.env.SMTP_PASS || !process.env.QUOTE_FROM_EMAIL;
+  const hasEmailFrom = !!process.env.QUOTE_FROM_EMAIL;
+  const hasEmailCreds =
+    (process.env.SMTP_USER && process.env.SMTP_PASS) || !!process.env.RESEND_API_KEY;
+  const isSmtpMissing = !hasEmailFrom || !hasEmailCreds;
 
   if (isSmtpMissing) {
     console.log("SMTP CONFIG MISSING", {
-      hasSmtpHost: !!process.env.SMTP_HOST,
-      hasSmtpPort: !!process.env.SMTP_PORT,
-      hasSmtpSecure: !!process.env.SMTP_SECURE,
-      hasSmtpUser: !!process.env.SMTP_USER,
-      hasSmtpPass: !!process.env.SMTP_PASS,
+      hasSmtpHost: !!process.env.SMTP_HOST || !!process.env.RESEND_API_KEY,
+      hasSmtpPort: !!process.env.SMTP_PORT || !!process.env.RESEND_API_KEY,
+      hasSmtpSecure: !!process.env.SMTP_SECURE || !!process.env.RESEND_API_KEY,
+      hasSmtpUser: !!process.env.SMTP_USER || !!process.env.RESEND_API_KEY,
+      hasSmtpPass: !!process.env.SMTP_PASS || !!process.env.RESEND_API_KEY,
       hasQuoteFromEmail: !!process.env.QUOTE_FROM_EMAIL,
+      hasResendApiKey: !!process.env.RESEND_API_KEY,
     });
 
     return {
@@ -688,12 +692,13 @@ export async function processPendingReminders(): Promise<ProcessPendingReminders
       debug: {
         ...debugBase,
         smtpStatus: {
-          hasSmtpHost: !!process.env.SMTP_HOST,
-          hasSmtpPort: !!process.env.SMTP_PORT,
-          hasSmtpSecure: !!process.env.SMTP_SECURE,
-          hasSmtpUser: !!process.env.SMTP_USER,
-          hasSmtpPass: !!process.env.SMTP_PASS,
+          hasSmtpHost: !!process.env.SMTP_HOST || !!process.env.RESEND_API_KEY,
+          hasSmtpPort: !!process.env.SMTP_PORT || !!process.env.RESEND_API_KEY,
+          hasSmtpSecure: !!process.env.SMTP_SECURE || !!process.env.RESEND_API_KEY,
+          hasSmtpUser: !!process.env.SMTP_USER || !!process.env.RESEND_API_KEY,
+          hasSmtpPass: !!process.env.SMTP_PASS || !!process.env.RESEND_API_KEY,
           hasQuoteFromEmail: !!process.env.QUOTE_FROM_EMAIL,
+          hasResendApiKey: !!process.env.RESEND_API_KEY,
         },
       },
     };
