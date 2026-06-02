@@ -173,42 +173,113 @@ export default function QuoteDetailPage() {
   }
 
   async function sendQuoteEmail() {
-    if (!lead?.customer_email) {
+    console.log("SEND_EMAIL_BUTTON_CLICKED");
+
+    // ============ VALIDATE DATA BEFORE API CALL ============
+    if (!quote) {
+      console.log("SEND_QUOTE_FRONTEND_ERROR: Quote not loaded", { quote });
+      toast.error("Quote not loaded. Please refresh the page.");
+      return;
+    }
+
+    if (!lead) {
+      console.log("SEND_QUOTE_FRONTEND_ERROR: Lead not loaded", { lead });
+      toast.error("Lead not loaded. Please refresh the page.");
+      return;
+    }
+
+    if (!lead.customer_email) {
+      console.log("SEND_QUOTE_FRONTEND_ERROR: Customer email missing", {
+        leadId: lead.id,
+        customerEmail: lead.customer_email,
+      });
       toast.error("Customer email not found");
+      return;
+    }
+
+    if (!lead.customer_name) {
+      console.log("SEND_QUOTE_FRONTEND_ERROR: Customer name missing", {
+        leadId: lead.id,
+        customerName: lead.customer_name,
+      });
+      toast.error("Customer name not found");
+      return;
+    }
+
+    if (!quote.id) {
+      console.log("SEND_QUOTE_FRONTEND_ERROR: Quote ID missing", {
+        quoteId: quote.id,
+      });
+      toast.error("Quote ID missing");
+      return;
+    }
+
+    if (quote.price === null || quote.price === undefined) {
+      console.log("SEND_QUOTE_FRONTEND_ERROR: Quote price missing", {
+        quoteId: quote.id,
+        price: quote.price,
+      });
+      toast.error("Quote price not set");
       return;
     }
 
     setIsSendingEmail(true);
 
     try {
+      const requestBody = {
+        quoteId: quote.id,
+        customerEmail: lead.customer_email,
+        customerName: lead.customer_name,
+        quotePrice: quote.price,
+      };
+
+      console.log("SEND_QUOTE_MAKING_FETCH_REQUEST:", {
+        url: "/api/send-quote",
+        method: "POST",
+        body: requestBody,
+        timestamp: new Date().toISOString(),
+      });
+
       const response = await fetch("/api/send-quote", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          quoteId: quote.id,
-          customerEmail: lead.customer_email,
-          customerName: lead.customer_name,
-          quotePrice: quote.price,
-        }),
+        body: JSON.stringify(requestBody),
+      });
+
+      console.log("SEND_QUOTE_FETCH_RESPONSE:", {
+        status: response.status,
+        ok: response.ok,
+        timestamp: new Date().toISOString(),
       });
 
       const data = await response.json().catch(() => null);
 
       if (!response.ok) {
-        console.log("SEND_QUOTE_API_ERROR:", {
+        console.log("SEND_QUOTE_API_ERROR_RESPONSE:", {
           status: response.status,
           data,
+          timestamp: new Date().toISOString(),
         });
 
-        throw new Error(data?.error || "Failed to send quote email");
+        throw new Error(data?.error || `API returned ${response.status}`);
       }
+
+      console.log("SEND_QUOTE_SUCCESS:", {
+        messageId: data?.data?.messageId,
+        timestamp: new Date().toISOString(),
+      });
 
       toast.success("Quote email sent successfully");
     } catch (error) {
-      console.log("SEND_QUOTE_FRONTEND_ERROR:", error);
-      toast.error("Failed to send email");
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      console.log("SEND_QUOTE_FRONTEND_ERROR:", {
+        error: errorMessage,
+        timestamp: new Date().toISOString(),
+      });
+      toast.error(`Failed to send email: ${errorMessage}`);
     }
 
     setIsSendingEmail(false);
