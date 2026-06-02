@@ -26,12 +26,6 @@ export default function QuotesPage() {
   }
 
   async function deleteQuote(id: string) {
-    const confirmed = confirm(
-      "Are you sure you want to delete this quote? Related booking will also be deleted."
-    );
-
-    if (!confirmed) return;
-
     setDeletingId(id);
 
     const { error: bookingsError } = await supabase

@@ -33,12 +33,6 @@ export default function BookingsPage() {
   }
 
   async function deleteBooking(id: string) {
-    const confirmed = confirm(
-      "Are you sure you want to delete this booking?"
-    );
-
-    if (!confirmed) return;
-
     setDeletingId(id);
 
     const { error } = await supabase
